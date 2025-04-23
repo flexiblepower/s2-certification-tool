@@ -1,11 +1,11 @@
 import asyncio
 import logging
 import signal
-from websockets.asyncio.connection import Connection as WSConnection
-from websockets.asyncio.server import serve as ws_serve
 
 from connection import Connection
 from orchestrator import IntegrationTestOrchestrator
+from websockets.asyncio.connection import Connection as WSConnection
+from websockets.asyncio.server import serve as ws_serve
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +42,7 @@ class S2Server:
 
     async def stop(self):
         logger.info("Stopping server...")
-        for task in self._connection_tasks:
-            task.cancel()
-        await asyncio.gather(*self._connection_tasks, return_exceptions=True)
         self._exit_event.set()
-        await self.orchestrator.stop()
 
     async def start(self):
         loop = asyncio.get_event_loop()
@@ -60,3 +56,9 @@ class S2Server:
             logger.info(f"Websocket server started at ws://{self._host}:{self._port}")
             await self._exit_event.wait()
             logger.info(f"Server stopped.")
+
+        self.orchestrator.stop()
+        for task in self._connection_tasks:
+            task.cancel()
+
+        await asyncio.gather(*self._connection_tasks, return_exceptions=True)

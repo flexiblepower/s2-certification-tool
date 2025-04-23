@@ -6,19 +6,16 @@ import argparse
 import asyncio
 import logging
 import logging.config
-import sys
 from typing import Dict
-from orchestrator import IntegrationTestOrchestrator
-from server import S2Server
 
-from message_handlers import (
-    Controller,
-    PEBCController,
-)
-from s2python.common import ControlType as ProtocolControlType
-from test_suite import build_test_suite
-from log import LOGGING_CONFIG
 from config import Config, load_config
+from controllers import Controller, PEBCController, FRBCController
+from log import LOGGING_CONFIG
+from orchestrator import IntegrationTestOrchestrator
+from s2python.common import ControlType as ProtocolControlType
+from server import S2Server
+from test_suite import PEBCTestCase, TestSuiteBuilder
+from test_suite.frbc_test_cases import FRBCTestCase
 
 logging.config.dictConfig(LOGGING_CONFIG)
 
@@ -39,19 +36,22 @@ async def main():
     config: Config = load_config(args.config)
 
     control_types: Dict[ProtocolControlType, Controller] = {
-        ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL: PEBCController(
-            config.control_types.pebc
-        ),
-        # ProtocolControlType.FILL_RATE_BASED_CONTROL: create_frbc_handler_manager(),
+        ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL: PEBCController(),
+        ProtocolControlType.FILL_RATE_BASED_CONTROL: FRBCController(),
     }
 
-    test_suite = build_test_suite()
-
-    controller = IntegrationTestOrchestrator(
-        available_control_types=control_types, test_suite=test_suite
+    test_suite = (
+        TestSuiteBuilder(config.control_types)
+        .with_test_case(PEBCTestCase)
+        .with_test_case(FRBCTestCase)
+        .build()
     )
 
-    s2_server = S2Server("0.0.0.0", 8000, controller)
+    orchestrator = IntegrationTestOrchestrator(
+        available_control_types=control_types, test_suites=test_suite
+    )
+
+    s2_server = S2Server("0.0.0.0", 8000, orchestrator)
     await s2_server.start()
 
 

@@ -8,3 +8,11 @@
 ## Getting started
 
 ## Todo
+
+## Development
+
+### Executing with Hot Reload
+
+```bash
+watchmedo auto-restart --pattern "*.py" --recursive --signal SIGTERM python ./src/s2-self-certification/main.py ./src/s2-self-certification/config.yaml
+```

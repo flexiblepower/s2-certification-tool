@@ -1,24 +1,14 @@
 import asyncio
 from dataclasses import dataclass
-from typing import (
-    TYPE_CHECKING,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    Type,
-)
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type
 
-from config import PEBCConfig
-from s2python.common import ControlType as ProtocolControlType, EnergyManagementRole
-from s2python.common import (
-    ResourceManagerDetails,
-)
+from s2python.common import ControlType as ProtocolControlType
+from s2python.common import EnergyManagementRole, ResourceManagerDetails
 from s2python.message import S2Message
+from s2python.pebc import (
+    PEBCPowerConstraints,
+)
 from s2python.s2_connection import AssetDetails, SendOkay
-
-# from s2python.s2_control_type import PEBCControlType
 
 if TYPE_CHECKING:
     from connection import Connection
@@ -35,8 +25,8 @@ class CEMAssetDetails(AssetDetails):  # pylint: disable=too-many-instance-attrib
     available_control_types: Optional[List["ProtocolControlType"]] = None
 
     @classmethod
-    def from_resource_manager_details(self, msg: ResourceManagerDetails):
-        return CEMAssetDetails(
+    def from_resource_manager_details(cls, msg: ResourceManagerDetails):
+        return cls(
             currency=msg.currency,
             firmware_version=msg.firmware_version,
             instruction_processing_delay=msg.instruction_processing_delay,
@@ -91,7 +81,7 @@ class S2MessageAwaiter:
             if self.awaiting:
                 # Set the message first before triggering the event to make sure that the
                 # waiting method gets the message.
-                awaiting[1] = message
+                awaiting[1] = message  # type: ignore
                 awaiting[0].set()
         else:
             logger.debug("Received message but nothing waiting for it.")
@@ -153,100 +143,7 @@ class MessageHandler:
                 )
 
 
-class Controller(MessageHandler):
-    control_type: ProtocolControlType
-
-    def __init__(self):
-        super().__init__()
-
-
-class ControlTypeBuilder:
-    def __init__(self):
-        self.control_type = Controller()
-
-    def with_handler(self, msg_type: Type[S2Message], handler: Callable):
-        self.control_type.add_handler(msg_type, handler)
-        return self
-
-    def build(self):
-        return self.control_type
-
-
-from s2python.pebc import (
-    PEBCEnergyConstraint,
-    PEBCPowerConstraints,
-    PEBCInstruction,
-    PEBCPowerEnvelope,
-    PEBCPowerEnvelopeConsequenceType,
-    PEBCPowerEnvelopeLimitType,
-    PEBCPowerEnvelopeElement,
-    PEBCAllowedLimitRange,
-)
-from s2python.frbc import (
-    FRBCSystemDescription,
-    FRBCFillLevelTargetProfile,
-    FRBCStorageStatus,
-    FRBCActuatorStatus,
-)
 
 ROLE = EnergyManagementRole.CEM
 
 
-class PEBCController(Controller):
-    control_type = ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL
-    power_constraints: Optional[PEBCPowerConstraints]
-    config: Optional[PEBCConfig]
-
-    _power_constraints_received = asyncio.Event()
-
-    def __init__(self, config: Optional[PEBCConfig]):
-        super().__init__()
-
-        self.config = config
-
-        self.power_constraints = None
-        self._power_constraints_received = asyncio.Event()
-
-        self.add_handler(PEBCPowerConstraints, self.handle_power_constraints_message)
-        # self.add_handler(PEBCEnergyConstraint, self.handle_energy_constraints_message)
-        # self.add_handler(PowerMeasurement, self.handle_power_measurement_message)
-        # self.add_handler(PowerForecast, self.handle_power_forecast_message)
-        # self.add_handler(InstructionStatusUpdate, self.handle_instruction_status_update)
-
-    async def handle_power_constraints_message(
-        self, message: PEBCPowerConstraints, connection: "Connection", send_okay
-    ):
-        if not self.is_correct_message_type(message, PEBCPowerConstraints):
-            raise ValueError("Invalid Message Type.")
-
-        logger.info("Received power constraints.")
-        self.power_constraints = message
-        self._power_constraints_received.set()
-
-        await send_okay
-
-    # async def handle_energy_constraints_message(
-    #     self, message: S2Message, connection, send_okay
-    # ):
-    #     if not self.is_correct_message_type(message, PEBCEnergyConstraint):
-    #         logger.error(
-    #             "Invalid Message Type. Expected %s but received %s",
-    #             PEBCEnergyConstraint.message_type,
-    #             message.message_type,
-    #         )
-    #         raise ValueError("Invalid Message Type.")
-
-    #     await send_okay
-
-    # async def handle_power_measurement_message(self, message, connection, send_okay):
-    #     self.is_correct_message_type(message, PowerMeasurement)
-    #     await send_okay
-
-    # async def handle_power_forecast_message(self, message, connection, send_okay):
-    #     self.is_correct_message_type(message, PowerForecast)
-    #     await send_okay
-
-    # async def handle_instruction_status_update(
-    #     self, message: InstructionStatusUpdate, connection, send_okay
-    # ):
-    #     await send_okay

@@ -1,42 +1,27 @@
 import asyncio
 import logging
-from types import CoroutineType
-from typing import Any, Optional, List, Type, Dict, Callable, Awaitable, Union
 import uuid
+from types import CoroutineType
+from typing import Awaitable, Callable, Coroutine, Dict, Optional, Type
 
+from s2python.common import ControlType as ProtocolControlType
 from s2python.common import (
-    ReceptionStatusValues,
-    ReceptionStatus,
-    Handshake,
     EnergyManagementRole,
-    Role,
+    Handshake,
     HandshakeResponse,
     ResourceManagerDetails,
-    Duration,
-    Currency,
     SelectControlType,
 )
-from s2python.common import ControlType as ProtocolControlType
-from s2python.generated.gen_s2 import CommodityQuantity
-from s2python.reception_status_awaiter import ReceptionStatusAwaiter
-from s2python.s2_control_type import S2ControlType
-from s2python.s2_parser import S2Parser
-from s2python.s2_validation_error import S2ValidationError
 from s2python.message import S2Message
-from s2python.s2_connection import AssetDetails, MessageHandlers
-from s2python.s2_control_type import PEBCControlType
-from s2python.common import ControlType as ProtocolControlType
-
-# Import just to set log settings
-from message_handlers import (
-    Controller,
-    CEMAssetDetails,
-)
+from s2python.s2_validation_error import S2ValidationError
 from s2python.version import S2_VERSION
-from test_suite import TestSuite
-from connection import Connection, SendOkay
-from util import wait_for_event_or_stop
 
+
+from connection import Connection, SendOkay
+from message_handlers import CEMAssetDetails
+from controllers import Controller
+from test_suite.test_suite import TestSuite
+from util import wait_for_event_or_stop
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +36,6 @@ class IntegrationTestOrchestrator:
     controller: Optional[Controller] = None
     controllers: Dict[ProtocolControlType, Controller]
 
-    message_queue: asyncio.Queue
     _tasks = set()
 
     # When set the main loop of Connection will trigger the stopping of all `_tasks`
@@ -67,12 +51,12 @@ class IntegrationTestOrchestrator:
     def __init__(
         self,
         available_control_types: Dict[ProtocolControlType, Controller],
-        test_suite: TestSuite,
+        test_suites: TestSuite,
     ) -> None:  # pylint: disable=too-many-arguments
 
         self.controllers = available_control_types
 
-        self.test_suite = test_suite
+        self.test_suites = test_suites
 
         self.handshake_message_handlers = {  # type: ignore
             Handshake: self.handle_handshake,
@@ -82,6 +66,7 @@ class IntegrationTestOrchestrator:
         self._stop_event = asyncio.Event()
 
     def set_control_type(self, control_type: ProtocolControlType):
+        logger.info(self.controllers)
         self.controller = self.controllers[control_type]
 
     async def process_received_messages(self):
@@ -119,7 +104,7 @@ class IntegrationTestOrchestrator:
         # Wait until the handshake is complete before starting the testing.
         # TODO: Figure out how to include the handshake process in the testing.
         if self.controller:
-            await self.test_suite.execute(self.connection, self.controller)
+            await self.test_suites.execute(self.connection, self.controller)
 
     async def main_loop(self):
         await self.initiate_handshake()
@@ -136,6 +121,29 @@ class IntegrationTestOrchestrator:
 
         await self.execute_test_suite()
 
+    async def connection_receive_messages(self):
+        """Wrapping the receive messages method to allow catching of validation errors."""
+        try:
+            await self.connection.receive_messages()
+        except S2ValidationError as e:
+            logger.error("S2 Validation Error encountered: %s", e)
+        except:
+            logger.exception("An error occurred whilst receiving messages.")
+
+    async def task_wrapper(self, task: Coroutine):
+        """Uncaught exceptions don't get logged reliably in tasks. This catches all exceptions to log them and kill the controller.
+
+        TODO: Maybe handle the exceptions in a better way...
+        """
+        try:
+            await task
+        except:
+            logger.exception("Exception in task!")
+            self.stop()
+
+    def create_task(self, task: Coroutine):
+        self._tasks.add(asyncio.create_task(self.task_wrapper(task)))
+
     async def run(self, connection: Connection):
         self.running = True
         self.connection = connection
@@ -145,11 +153,9 @@ class IntegrationTestOrchestrator:
         self._stop_event = asyncio.Event()
 
         # Receives messages and puts them onto the queue.
-        self._tasks.add(asyncio.create_task(self.connection.receive_messages()))
-        self._tasks.add(asyncio.create_task(self.process_received_messages()))
-
-        self._tasks.add(asyncio.create_task(self.main_loop()))
-        # self._tasks.add(asyncio.create_task(self.execute_test_suites()))
+        self.create_task(self.connection_receive_messages())
+        self.create_task(self.process_received_messages())
+        self.create_task(self.main_loop())
 
         logger.info("Started tasks")
 
@@ -166,7 +172,7 @@ class IntegrationTestOrchestrator:
 
         self.running = False
 
-    async def stop(self):
+    def stop(self):
         logger.info("Stopping.")
         self._stop_event.set()
 

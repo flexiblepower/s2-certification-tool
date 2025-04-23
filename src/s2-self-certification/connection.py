@@ -2,20 +2,16 @@ import asyncio
 import json
 import logging
 import threading
-from typing import Type
 import uuid
+from typing import Type
 
 import websockets
-from websockets.asyncio.connection import Connection as WSConnection
-
-from s2python.common import (
-    ReceptionStatusValues,
-    ReceptionStatus,
-)
+from s2python.common import ReceptionStatus, ReceptionStatusValues
+from s2python.message import S2Message
 from s2python.reception_status_awaiter import ReceptionStatusAwaiter
 from s2python.s2_parser import S2Parser
 from s2python.s2_validation_error import S2ValidationError
-from s2python.message import S2Message
+from websockets.asyncio.connection import Connection as WSConnection
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +84,7 @@ class Connection:  # pylint: disable=too-many-instance-attributes
         try:
             await self.ws.send(json_msg)
         except websockets.ConnectionClosedError as e:
-            logger.error("Unable to send message %s due to %s", s2_msg, str(e))
+            logger.error("Unable to send message %s.", s2_msg.message_type)
 
     async def respond_with_reception_status(
         self,
@@ -152,7 +148,6 @@ class Connection:  # pylint: disable=too-many-instance-attributes
                 )
             )
         except S2ValidationError as e:
-            logger.exception("Problem whilst validating S2 Message.")
             json_msg = json.loads(message)
             message_id = json_msg.get("message_id")
             if message_id:
@@ -169,6 +164,9 @@ class Connection:  # pylint: disable=too-many-instance-attributes
                     status=ReceptionStatusValues.INVALID_DATA,
                     diagnostic_label="Message appears valid json but could not find a message_id field.",
                 )
+
+            # Raise the error so that we can handle it in the orchestrator
+            raise e
         except websockets.ConnectionClosedOK:
             logger.info("Connection closed by remote. ")
             await self.stop()
@@ -203,10 +201,13 @@ class Connection:  # pylint: disable=too-many-instance-attributes
                 await self.parse_received_message(str(message))
         except websockets.ConnectionClosedOK:
             logger.info("Connection closed normally by remote.")
+            self._handle_ws_close()
         except websockets.ConnectionClosedError as e:
             logger.error("Connection closed with error: %s", str(e))
-        finally:
-            self._stop_event.set()
+            self._handle_ws_close()
+
+    def _handle_ws_close(self):
+        self._stop_event.set()
 
     async def get_next_message(self):
         return await self.message_queue.get()

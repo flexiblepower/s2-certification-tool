@@ -20,6 +20,7 @@ LOGGING_CONFIG: Dict = {
     },
     "loggers": {
         "": {"handlers": ["console"], "level": "DEBUG", "propagate": True},
-        "s2_connection": {"handlers": ["console"], "level": "INFO", "propogate": False},
+        "connection": {"handlers": ["console"], "level": "INFO", "propogate": False},
+        "orchestrator": {"handlers": ["console"], "level": "DEBUG", "propogate": False},
     },
 }
