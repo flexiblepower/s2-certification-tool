@@ -1,0 +1,9 @@
+
+device_details:
+  name: Some Device
+  manufacturer: ACME
+control_types:
+  no_selection: null
+  pebc: 
+      status_update_frequency: 10
+  frbc: null

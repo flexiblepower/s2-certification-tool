@@ -1,0 +1,252 @@
+import asyncio
+from dataclasses import dataclass
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+)
+
+from config import PEBCConfig
+from s2python.common import ControlType as ProtocolControlType, EnergyManagementRole
+from s2python.common import (
+    ResourceManagerDetails,
+)
+from s2python.message import S2Message
+from s2python.s2_connection import AssetDetails, SendOkay
+
+# from s2python.s2_control_type import PEBCControlType
+
+if TYPE_CHECKING:
+    from connection import Connection
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+from s2python.version import S2_VERSION
+
+
+@dataclass
+class CEMAssetDetails(AssetDetails):  # pylint: disable=too-many-instance-attributes
+    available_control_types: Optional[List["ProtocolControlType"]] = None
+
+    @classmethod
+    def from_resource_manager_details(self, msg: ResourceManagerDetails):
+        return CEMAssetDetails(
+            currency=msg.currency,
+            firmware_version=msg.firmware_version,
+            instruction_processing_delay=msg.instruction_processing_delay,
+            manufacturer=msg.manufacturer,
+            model=msg.model,
+            name=msg.name,
+            provides_forecast=msg.provides_forecast,
+            provides_power_measurements=msg.provides_power_measurement_types,
+            resource_id=msg.resource_id,
+            roles=msg.roles,
+            serial_number=msg.serial_number,
+            available_control_types=msg.available_control_types,
+        )
+
+
+class MessageHandlerNotFoundError(Exception):
+    pass
+
+
+class S2MessageAwaiter:
+    """
+    Utility class which waits allows async functions on different threads
+    to wait for a message of a particular type to be received.
+    """
+
+    awaiting: Dict[Type[S2Message], Tuple[asyncio.Event, Optional[S2Message]]]
+
+    def __init__(self):
+        self.awaiting = {}
+
+    async def wait_for_message(self, message_type: Type[S2Message], timeout: float):
+        # Incase we have multiple tasks waiting for the same message.
+        # Not sure if this going to be a possible scenario, but worth covering anyways.
+        if message_type not in self.awaiting or self.awaiting[message_type][0].is_set():
+            event = asyncio.Event()
+            self.awaiting[message_type] = (event, None)
+        else:
+            event = self.awaiting[message_type][0]
+
+        await asyncio.wait_for(event.wait(), timeout)
+
+        message = self.awaiting[message_type][1]
+        if message is None:
+            raise ValueError("Message not set.")
+
+        return message
+
+    def receive_message(self, message: S2Message):
+        if message.message_type in self.awaiting:
+            logger.debug("Received message that is being waited for. Setting event.")
+            awaiting = self.awaiting[message.message_type]
+            if self.awaiting:
+                # Set the message first before triggering the event to make sure that the
+                # waiting method gets the message.
+                awaiting[1] = message
+                awaiting[0].set()
+        else:
+            logger.debug("Received message but nothing waiting for it.")
+
+
+class MessageHandler:
+    handlers: Dict[Type[S2Message], Callable]
+
+    message_awaiter = S2MessageAwaiter()
+
+    # When set to true messages without a handler won't thrown an error
+    # and the okay response will be sent.
+    _accept_unhandled_messages: bool = True
+
+    def __init__(self):
+        self.handlers = {}
+
+        self.message_awaiter = S2MessageAwaiter()
+
+    def is_correct_message_type(
+        self, message: S2Message, message_type: Type[S2Message]
+    ):
+        if not isinstance(message, message_type):
+            logger.error(
+                "Handler for Handshake received a message of the wrong type: %s",
+                type(message),
+            )
+            return False
+        return True
+
+    def add_handler(self, msg_type: Type[S2Message], handler: Callable):
+        self.handlers[msg_type] = handler
+
+    async def handle_message(
+        self, message: S2Message, connection: "Connection", *args, **kwargs
+    ):
+        try:
+            handler = self.handlers[type(message)]
+
+            send_okay = SendOkay(connection, message.message_id)  # type: ignore[attr-defined, union-attr]
+
+            self.message_awaiter.receive_message(message)
+            result = await handler(
+                message, connection, send_okay.run_async(), *args, **kwargs
+            )
+
+            await send_okay.ensure_send_async(type(message))
+
+            return result
+
+        except KeyError:
+            if self._accept_unhandled_messages:
+                send_okay = SendOkay(connection, message.message_id)  # type: ignore[attr-defined, union-attr]
+
+                await send_okay.run_async()
+            else:
+                raise MessageHandlerNotFoundError(
+                    f"Command does not exist for message type '{ message.message_type}'"
+                )
+
+
+class Controller(MessageHandler):
+    control_type: ProtocolControlType
+
+    def __init__(self):
+        super().__init__()
+
+
+class ControlTypeBuilder:
+    def __init__(self):
+        self.control_type = Controller()
+
+    def with_handler(self, msg_type: Type[S2Message], handler: Callable):
+        self.control_type.add_handler(msg_type, handler)
+        return self
+
+    def build(self):
+        return self.control_type
+
+
+from s2python.pebc import (
+    PEBCEnergyConstraint,
+    PEBCPowerConstraints,
+    PEBCInstruction,
+    PEBCPowerEnvelope,
+    PEBCPowerEnvelopeConsequenceType,
+    PEBCPowerEnvelopeLimitType,
+    PEBCPowerEnvelopeElement,
+    PEBCAllowedLimitRange,
+)
+from s2python.frbc import (
+    FRBCSystemDescription,
+    FRBCFillLevelTargetProfile,
+    FRBCStorageStatus,
+    FRBCActuatorStatus,
+)
+
+ROLE = EnergyManagementRole.CEM
+
+
+class PEBCController(Controller):
+    control_type = ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL
+    power_constraints: Optional[PEBCPowerConstraints]
+    config: Optional[PEBCConfig]
+
+    _power_constraints_received = asyncio.Event()
+
+    def __init__(self, config: Optional[PEBCConfig]):
+        super().__init__()
+
+        self.config = config
+
+        self.power_constraints = None
+        self._power_constraints_received = asyncio.Event()
+
+        self.add_handler(PEBCPowerConstraints, self.handle_power_constraints_message)
+        # self.add_handler(PEBCEnergyConstraint, self.handle_energy_constraints_message)
+        # self.add_handler(PowerMeasurement, self.handle_power_measurement_message)
+        # self.add_handler(PowerForecast, self.handle_power_forecast_message)
+        # self.add_handler(InstructionStatusUpdate, self.handle_instruction_status_update)
+
+    async def handle_power_constraints_message(
+        self, message: PEBCPowerConstraints, connection: "Connection", send_okay
+    ):
+        if not self.is_correct_message_type(message, PEBCPowerConstraints):
+            raise ValueError("Invalid Message Type.")
+
+        logger.info("Received power constraints.")
+        self.power_constraints = message
+        self._power_constraints_received.set()
+
+        await send_okay
+
+    # async def handle_energy_constraints_message(
+    #     self, message: S2Message, connection, send_okay
+    # ):
+    #     if not self.is_correct_message_type(message, PEBCEnergyConstraint):
+    #         logger.error(
+    #             "Invalid Message Type. Expected %s but received %s",
+    #             PEBCEnergyConstraint.message_type,
+    #             message.message_type,
+    #         )
+    #         raise ValueError("Invalid Message Type.")
+
+    #     await send_okay
+
+    # async def handle_power_measurement_message(self, message, connection, send_okay):
+    #     self.is_correct_message_type(message, PowerMeasurement)
+    #     await send_okay
+
+    # async def handle_power_forecast_message(self, message, connection, send_okay):
+    #     self.is_correct_message_type(message, PowerForecast)
+    #     await send_okay
+
+    # async def handle_instruction_status_update(
+    #     self, message: InstructionStatusUpdate, connection, send_okay
+    # ):
+    #     await send_okay

@@ -1,0 +1,4 @@
+websockets
+s2-python
+pydantic
+PyYAML

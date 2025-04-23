@@ -1,0 +1,241 @@
+import asyncio
+import logging
+from types import CoroutineType
+from typing import Any, Optional, List, Type, Dict, Callable, Awaitable, Union
+import uuid
+
+from s2python.common import (
+    ReceptionStatusValues,
+    ReceptionStatus,
+    Handshake,
+    EnergyManagementRole,
+    Role,
+    HandshakeResponse,
+    ResourceManagerDetails,
+    Duration,
+    Currency,
+    SelectControlType,
+)
+from s2python.common import ControlType as ProtocolControlType
+from s2python.generated.gen_s2 import CommodityQuantity
+from s2python.reception_status_awaiter import ReceptionStatusAwaiter
+from s2python.s2_control_type import S2ControlType
+from s2python.s2_parser import S2Parser
+from s2python.s2_validation_error import S2ValidationError
+from s2python.message import S2Message
+from s2python.s2_connection import AssetDetails, MessageHandlers
+from s2python.s2_control_type import PEBCControlType
+from s2python.common import ControlType as ProtocolControlType
+
+# Import just to set log settings
+from message_handlers import (
+    Controller,
+    CEMAssetDetails,
+)
+from s2python.version import S2_VERSION
+from test_suite import TestSuite
+from connection import Connection, SendOkay
+from util import wait_for_event_or_stop
+
+
+logger = logging.getLogger(__name__)
+
+
+class IntegrationTestOrchestrator:
+    role: EnergyManagementRole = EnergyManagementRole.CEM
+
+    connection: "Connection"
+
+    asset_details: CEMAssetDetails
+
+    controller: Optional[Controller] = None
+    controllers: Dict[ProtocolControlType, Controller]
+
+    message_queue: asyncio.Queue
+    _tasks = set()
+
+    # When set the main loop of Connection will trigger the stopping of all `_tasks`
+    _stop_event: asyncio.Event
+
+    # The functions which handle the Handshake messages. All other messages should be handled by the controllers.
+    handshake_message_handlers: Dict[
+        Type[S2Message], Callable[[S2Message, Awaitable[None]], CoroutineType]
+    ]
+
+    running = False
+
+    def __init__(
+        self,
+        available_control_types: Dict[ProtocolControlType, Controller],
+        test_suite: TestSuite,
+    ) -> None:  # pylint: disable=too-many-arguments
+
+        self.controllers = available_control_types
+
+        self.test_suite = test_suite
+
+        self.handshake_message_handlers = {  # type: ignore
+            Handshake: self.handle_handshake,
+            ResourceManagerDetails: self.handle_rm_details,
+        }
+
+        self._stop_event = asyncio.Event()
+
+    def set_control_type(self, control_type: ProtocolControlType):
+        self.controller = self.controllers[control_type]
+
+    async def process_received_messages(self):
+        """AsyncIO task which pops messages off the queue and processes them using the control type."""
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    # Use a timeout to periodically check for cancellation
+                    msg: S2Message = await asyncio.wait_for(
+                        self.connection.get_next_message(), timeout=1.0
+                    )
+                except asyncio.TimeoutError:
+                    continue  # Check stop event and loop again
+
+                # If Handshake message then use the handshake message handlers
+                if type(msg) in self.handshake_message_handlers:
+                    send_okay = SendOkay(self.connection, msg.message_id)  # type: ignore
+                    await self.handshake_message_handlers[type(msg)](
+                        msg, send_okay.run_async()
+                    )
+                    await send_okay.ensure_send_async(type(msg))
+                elif self.controller is not None:
+                    await self.controller.handle_message(msg, self.connection)  # type: ignore
+                else:
+                    logger.warning("No handler available for %s", msg.message_type)
+
+        except asyncio.CancelledError:
+            logger.info("Message receiver cancelled.")
+        except Exception as e:
+            logger.exception("Message processor encountered an error: %s", e)
+        finally:
+            self._stop_event.set()
+
+    async def execute_test_suite(self):
+        # Wait until the handshake is complete before starting the testing.
+        # TODO: Figure out how to include the handshake process in the testing.
+        if self.controller:
+            await self.test_suite.execute(self.connection, self.controller)
+
+    async def main_loop(self):
+        await self.initiate_handshake()
+
+        if not await wait_for_event_or_stop(self._handshake_complete, self._stop_event):
+            return
+
+        logger.info("Handshake Complete")
+
+        await self.send_select_control_type()
+
+        logger.info("-" * 40)
+        logger.info("Starting tests!")
+
+        await self.execute_test_suite()
+
+    async def run(self, connection: Connection):
+        self.running = True
+        self.connection = connection
+
+        self._handshake_complete = asyncio.Event()
+
+        self._stop_event = asyncio.Event()
+
+        # Receives messages and puts them onto the queue.
+        self._tasks.add(asyncio.create_task(self.connection.receive_messages()))
+        self._tasks.add(asyncio.create_task(self.process_received_messages()))
+
+        self._tasks.add(asyncio.create_task(self.main_loop()))
+        # self._tasks.add(asyncio.create_task(self.execute_test_suites()))
+
+        logger.info("Started tasks")
+
+        await self._stop_event.wait()
+
+        for task in self._tasks:
+            task.cancel()
+
+        await asyncio.gather(*self._tasks)
+
+        await self.connection.stop()
+
+        self._tasks.clear()
+
+        self.running = False
+
+    async def stop(self):
+        logger.info("Stopping.")
+        self._stop_event.set()
+
+    def is_running(self):
+        return self.running
+
+    async def initiate_handshake(self):
+        await self.connection.send_msg_and_await_reception_status(
+            Handshake(
+                message_id=uuid.uuid4(),  # type: ignore
+                role=self.role,
+                supported_protocol_versions=[S2_VERSION],
+            )
+        )
+
+    async def handle_handshake(
+        self,
+        message: Handshake,
+        send_okay: Awaitable[None],
+    ) -> None:
+        logger.debug(
+            "%s supports S2 protocol versions: %s",
+            message.role,
+            message.supported_protocol_versions,
+        )
+        if message.supported_protocol_versions is None:
+            raise ValueError(
+                "Missing supported protocol versions in handshake message."
+            )
+
+        await send_okay
+
+        await self.connection.send_msg_and_await_reception_status(
+            HandshakeResponse(
+                message_id=uuid.uuid4(),
+                selected_protocol_version=message.supported_protocol_versions[0],
+            )
+        )
+
+    async def send_select_control_type(self):
+        # TODO: Select the control type in a better way.
+        logger.info("Selecting Control Type.")
+        if (
+            self.asset_details is None
+            or self.asset_details.available_control_types is None
+        ):
+            raise Exception("Missing Asset Details.")
+
+        selected = self.asset_details.available_control_types[0]
+
+        if selected is None:
+            logger.error("No suitable control type found.")
+
+        logger.info("Selecting control type %s", selected)
+
+        self.set_control_type(selected)
+
+        await self.connection.send_msg_and_await_reception_status(
+            SelectControlType(message_id=uuid.uuid4(), control_type=selected)
+        )
+
+    async def handle_rm_details(
+        self,
+        message: ResourceManagerDetails,
+        send_okay: Awaitable[None],
+    ):
+
+        self.asset_details = CEMAssetDetails.from_resource_manager_details(message)
+
+        await send_okay
+
+        self._handshake_complete.set()
