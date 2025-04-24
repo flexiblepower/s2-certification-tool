@@ -2,14 +2,24 @@ import datetime
 import logging
 import uuid
 
+from certificate.certificate import (
+    ComplianceFinding,
+    ComplianceParameter,
+    ComplianceReport,
+    ComplianceStatus,
+)
 from config import BaseTestConfig, PEBCTestConfig
 from connection import Connection
 from controllers.controller import Controller
 from controllers.pebc_controller import PEBCController
-from s2python.common import PowerMeasurement
+from s2python.common import (
+    ControlType as ProtocolControlType,
+    PowerMeasurement,
+)
 from s2python.pebc import (
     PEBCAllowedLimitRange,
     PEBCInstruction,
+    PEBCPowerConstraints,
     PEBCPowerEnvelope,
     PEBCPowerEnvelopeElement,
 )
@@ -19,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class PEBCTestCase(S2TestCase):
+    control_type = ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL
     controller: PEBCController
     config: PEBCTestConfig
 
@@ -27,11 +38,11 @@ class PEBCTestCase(S2TestCase):
         config: PEBCTestConfig,
         connection: Connection,
         controller: PEBCController,
+        report: ComplianceReport,
     ):
-        super().__init__(config, connection, controller)
-    
+        super().__init__(config, connection, controller, report)
 
-    async def wait_until_control_type_attrs_set(self):
+    async def wait_until_power_constraints_set(self):
         power_constraints = self.controller.power_constraints
         if (
             power_constraints is None
@@ -45,10 +56,22 @@ class PEBCTestCase(S2TestCase):
             await self.controller._power_constraints_received.wait()
             logger.info("Power Constraints is set.")
 
+    async def validate_power_constraints_set(self):
+        await self.wait_until_power_constraints_set()
+
+        finding = ComplianceFinding(message_type=PEBCPowerConstraints)
+        finding.add_parameter(
+            ComplianceParameter(
+                name="PEBCPowerConstraints Provided.", status=ComplianceStatus.PASS
+            )
+        )
+
+        self.report.add_finding(finding)
+
     async def test_set_limit_ranges_instruction(self):
         # for limit_ranges in self.power_constraints.allowed_limit_ranges:
         logger.info("Testing set limit range")
-        await self.wait_until_control_type_attrs_set()
+        await self.wait_until_power_constraints_set()
 
         power_constraints = self.controller.power_constraints
 
@@ -115,4 +138,7 @@ class PEBCTestCase(S2TestCase):
             logger.exception("Did not receive power reading within allowed window.")
 
     async def execute(self):
-        await self.test_receives_interval_power_readings()
+        logger.info("Starting PEBC Test Case")
+        await self.validate_power_constraints_set()
+        # await self.test_receives_interval_power_readings()
+        logger.info("Start")

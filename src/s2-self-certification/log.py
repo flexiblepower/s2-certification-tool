@@ -27,5 +27,6 @@ LOGGING_CONFIG: Dict = {
         "connection": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "orchestrator": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "websockets": {"handlers": ["console"], "level": "WARNING", "propagate": True},
+        "asyncio": {"handlers": ["console"], "level": "WARNING", "propagate": True},
     },
 }

@@ -20,7 +20,6 @@ class S2Server:
         self._host = host
         self._port = port
         self._exit_event = asyncio.Event()
-        self._connection_tasks = set()
 
         self.orchestrator = orchestrator
 
@@ -36,11 +35,13 @@ class S2Server:
             await self.orchestrator.run(connection)
 
             logger.info("Connection closed.")
+
+            self.stop()
         else:
             logger.warning("This application only accepts one connection.")
             await websocket.close()
 
-    async def stop(self):
+    def stop(self):
         logger.info("Stopping server...")
         self._exit_event.set()
 
@@ -48,17 +49,15 @@ class S2Server:
         loop = asyncio.get_event_loop()
 
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
+            loop.add_signal_handler(sig, lambda: self.stop())
 
         async with ws_serve(
             self.handle_incoming_connection, self._host, self._port
         ) as ws_server:
             logger.info(f"Websocket server started at ws://{self._host}:{self._port}")
+            logger.info("Waiting for RM connection...")
             await self._exit_event.wait()
-            logger.info(f"Server stopped.")
+            logger.info(f"Server stopping.")
 
         self.orchestrator.stop()
-        for task in self._connection_tasks:
-            task.cancel()
-
-        await asyncio.gather(*self._connection_tasks, return_exceptions=True)
+        logger.info(f"Server stop.")

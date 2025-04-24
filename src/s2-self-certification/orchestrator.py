@@ -1,9 +1,13 @@
 import asyncio
 import logging
+from tracemalloc import stop
 import uuid
 from types import CoroutineType
 from typing import Awaitable, Callable, Coroutine, Dict, Optional, Type
 
+from mypyc.ir.ops import Value
+
+from certificate.certificate import ComplianceReport
 from s2python.common import ControlType as ProtocolControlType
 from s2python.common import (
     EnergyManagementRole,
@@ -28,9 +32,9 @@ logger = logging.getLogger(__name__)
 class IntegrationTestOrchestrator:
     role: EnergyManagementRole = EnergyManagementRole.CEM
 
-    connection: "Connection"
+    connection: Optional["Connection"] = None
 
-    resource_manager_details: ResourceManagerDetails
+    resource_manager_details: Optional[ResourceManagerDetails] = None
 
     controller: Optional[Controller] = None
     controllers: Dict[ProtocolControlType, Controller]
@@ -53,6 +57,7 @@ class IntegrationTestOrchestrator:
         self,
         available_control_types: Dict[ProtocolControlType, Controller],
         test_suite: TestSuite,
+        report: ComplianceReport,
     ) -> None:  # pylint: disable=too-many-arguments
 
         self.controllers = available_control_types
@@ -66,12 +71,18 @@ class IntegrationTestOrchestrator:
 
         self._stop_event = asyncio.Event()
 
+        self.report = report
+
     def set_control_type(self, control_type: ProtocolControlType):
         logger.info(self.controllers)
         self.controller = self.controllers[control_type]
 
     async def process_received_messages(self):
         """AsyncIO task which pops messages off the queue and processes them using the control type."""
+
+        if self.connection is None:
+            raise ValueError("Connection not set.")
+
         try:
             while not self._stop_event.is_set():
                 try:
@@ -104,6 +115,10 @@ class IntegrationTestOrchestrator:
     async def execute_test_suite(self):
         # Wait until the handshake is complete before starting the testing.
         # TODO: Figure out how to include the handshake process in the testing.
+
+        if self.connection is None:
+            raise ValueError("Connection not set.")
+
         if self.controller:
             await self.test_suite.execute(self.connection, self.controller)
 
@@ -113,17 +128,22 @@ class IntegrationTestOrchestrator:
         if not await wait_for_event_or_stop(self._handshake_complete, self._stop_event):
             return
 
-        logger.info("Handshake Complete")
+        logger.info("Handshake Complete!")
 
         await self.send_select_control_type()
 
-        logger.info("-" * 40)
         logger.info("Starting tests!")
 
         await self.execute_test_suite()
 
+        logger.info(self.report.generate_certificate_dict())
+
     async def connection_receive_messages(self):
         """Wrapping the receive messages method to allow catching of validation errors."""
+
+        if self.connection is None:
+            raise ValueError("Connection not set.")
+
         try:
             await self.connection.receive_messages()
         except S2ValidationError as e:
@@ -134,43 +154,42 @@ class IntegrationTestOrchestrator:
         except:
             logger.exception("An error occurred whilst receiving messages.")
 
-    async def task_wrapper(self, task: Coroutine):
+    async def task_wrapper(self, task: Coroutine, stop_on_complete):
         """Uncaught exceptions don't get logged reliably in tasks. This catches all exceptions to log them and kill the controller.
 
         TODO: Maybe handle the exceptions in a better way...
         """
         try:
             await task
+            if stop_on_complete:
+                self.stop()
         except:
             logger.exception("Exception in task!")
             self.stop()
 
-    def create_task(self, task: Coroutine):
-        self._tasks.add(asyncio.create_task(self.task_wrapper(task)))
+    def create_task(self, task: Coroutine, stop_on_complete=False):
+        self._tasks.add(asyncio.create_task(self.task_wrapper(task, stop_on_complete)))
 
     async def run(self, connection: Connection):
         self.running = True
         self.connection = connection
 
         self._handshake_complete = asyncio.Event()
-
         self._stop_event = asyncio.Event()
 
         # Receives messages and puts them onto the queue.
-        self.create_task(self.connection_receive_messages())
-        self.create_task(self.process_received_messages())
-        self.create_task(self.main_loop())
-
-        logger.info("Started tasks")
+        self.create_task(self.connection_receive_messages(), True)
+        self.create_task(self.process_received_messages(), True)
+        self.create_task(self.main_loop(), True)
 
         await self._stop_event.wait()
 
         for task in self._tasks:
             task.cancel()
 
-        await asyncio.gather(*self._tasks)
-
         await self.connection.stop()
+
+        await asyncio.gather(*self._tasks)
 
         self._tasks.clear()
 
@@ -184,6 +203,9 @@ class IntegrationTestOrchestrator:
         return self.running
 
     async def initiate_handshake(self):
+        if self.connection is None:
+            raise ValueError("Connection not set.")
+
         await self.connection.send_msg_and_await_reception_status(
             Handshake(
                 message_id=uuid.uuid4(),  # type: ignore
@@ -197,6 +219,10 @@ class IntegrationTestOrchestrator:
         message: Handshake,
         send_okay: Awaitable[None],
     ) -> None:
+
+        if self.connection is None:
+            raise ValueError("Connection not set.")
+
         logger.debug(
             "%s supports S2 protocol versions: %s",
             message.role,
@@ -225,6 +251,9 @@ class IntegrationTestOrchestrator:
         ):
             raise Exception("Missing Resource Details.")
 
+        if self.connection is None:
+            raise ValueError("Connection not set.")
+
         controller: Optional[Controller] = None
 
         while (
@@ -233,9 +262,9 @@ class IntegrationTestOrchestrator:
         ):
             control_type = self.resource_manager_details.available_control_types.pop()
             if control_type in self.controllers:
-                logger.info(
-                    "Getting controller %s from %s", control_type, self.controllers
-                )
+                # logger.info(
+                #     "Getting controller %s from %s", control_type, self.controllers
+                # )
                 controller = self.controllers[control_type]
 
         if controller is None:

@@ -14,6 +14,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class MessageHandlerNotFoundError(Exception):
     pass
 
@@ -74,13 +75,17 @@ class MessageHandler:
         self.message_awaiter = S2MessageAwaiter()
 
     def is_correct_message_type(
-        self, message: S2Message, message_type: Type[S2Message]
+        self, message: S2Message, message_type: Type[S2Message], raise_exception=True
     ):
         if not isinstance(message, message_type):
             logger.error(
                 "Handler for Handshake received a message of the wrong type: %s",
                 type(message),
             )
+            if raise_exception:
+                raise ValueError(
+                    f"Incorrect message type. Expected {message_type} but received {message.message_type}."
+                )
             return False
         return True
 

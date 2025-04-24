@@ -1,6 +1,11 @@
-from typing import Callable, Type
+from typing import Awaitable, Callable, Type
+from connection import Connection
 from message_handlers import MessageHandler
-from s2python.common import ControlType as ProtocolControlType
+from s2python.common import (
+    ControlType as ProtocolControlType,
+    PowerForecast,
+    PowerMeasurement,
+)
 from s2python.message import S2Message
 from s2python.s2_validation_error import S2ValidationError
 
@@ -25,3 +30,24 @@ class BaseController(Controller):
 
     def __init__(self):
         super().__init__()
+
+        self.add_handler(PowerMeasurement, self.handle_power_measurement_message)
+        self.add_handler(PowerForecast, self.handle_power_forecast_message)
+
+    async def handle_power_measurement_message(
+        self,
+        message: PowerMeasurement,
+        connection: "Connection",
+        send_okay: Awaitable,
+    ):
+
+        await send_okay
+
+    async def handle_power_forecast_message(
+        self,
+        message: PowerForecast,
+        connection: "Connection",
+        send_okay: Awaitable,
+    ):
+
+        await send_okay

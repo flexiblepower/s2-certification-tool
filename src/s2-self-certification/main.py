@@ -4,10 +4,12 @@
 
 import argparse
 import asyncio
+from datetime import datetime
 import logging
 import logging.config
 from typing import Dict
 
+from certificate.certificate import ComplianceReport
 from config import Config, ControlTypeTestConfig, load_config
 from controllers import Controller, PEBCController, FRBCController
 from log import LOGGING_CONFIG
@@ -25,7 +27,9 @@ parser = argparse.ArgumentParser(prog="S2 Self Cert")
 parser.add_argument("config")
 
 
-def create_controllers_dict(config: Config) -> Dict[ProtocolControlType, Controller]:
+def create_controllers_dict(
+    config: Config, report: ComplianceReport
+) -> Dict[ProtocolControlType, Controller]:
     controllers: Dict[ProtocolControlType, Controller] = {}
 
     if config.control_types.frbc and config.control_types.frbc.enabled:
@@ -45,21 +49,26 @@ async def main():
 
     config: Config = load_config(args.config)
 
-    controllers = create_controllers_dict(config)
+    report = ComplianceReport(timestamp=datetime.now())
+
+    controllers = create_controllers_dict(config, report)
 
     test_suite = (
-        TestSuiteBuilder(config.control_types)
+        TestSuiteBuilder(config.control_types, report)
         .with_test_case(PEBCTestCase)
         .with_test_case(FRBCTestCase)
         .build()
     )
 
     orchestrator = IntegrationTestOrchestrator(
-        available_control_types=controllers, test_suite=test_suite
+        available_control_types=controllers, test_suite=test_suite, report=report
     )
 
     s2_server = S2Server("0.0.0.0", 8000, orchestrator)
+
     await s2_server.start()
+
+    report.export()
 
 
 if __name__ == "__main__":

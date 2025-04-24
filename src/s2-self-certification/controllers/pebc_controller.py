@@ -1,8 +1,12 @@
 import asyncio
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Awaitable, Optional
 
-from s2python.common import ControlType as ProtocolControlType
+from s2python.common import (
+    ControlType as ProtocolControlType,
+    InstructionStatusUpdate,
+)
 from s2python.pebc import (
+    PEBCEnergyConstraint,
     PEBCPowerConstraints,
 )
 from .controller import Controller
@@ -28,45 +32,59 @@ class PEBCController(Controller):
         self._power_constraints_received = asyncio.Event()
 
         self.add_handler(PEBCPowerConstraints, self.handle_power_constraints_message)
-        # self.add_handler(PEBCEnergyConstraint, self.handle_energy_constraints_message)
-        # self.add_handler(PowerMeasurement, self.handle_power_measurement_message)
-        # self.add_handler(PowerForecast, self.handle_power_forecast_message)
-        # self.add_handler(InstructionStatusUpdate, self.handle_instruction_status_update)
+        self.add_handler(PEBCEnergyConstraint, self.handle_energy_constraints_message)
+        self.add_handler(InstructionStatusUpdate, self.handle_instruction_status_update)
 
     async def handle_power_constraints_message(
-        self, message: PEBCPowerConstraints, connection: "Connection", send_okay
+        self,
+        message: PEBCPowerConstraints,
+        connection: "Connection",
+        send_okay: Awaitable,
     ):
-        if not self.is_correct_message_type(message, PEBCPowerConstraints):
-            raise ValueError("Invalid Message Type.")
-
         logger.info("Received power constraints.")
         self.power_constraints = message
         self._power_constraints_received.set()
 
         await send_okay
 
-    # async def handle_energy_constraints_message(
-    #     self, message: S2Message, connection, send_okay
-    # ):
-    #     if not self.is_correct_message_type(message, PEBCEnergyConstraint):
-    #         logger.error(
-    #             "Invalid Message Type. Expected %s but received %s",
-    #             PEBCEnergyConstraint.message_type,
-    #             message.message_type,
-    #         )
-    #         raise ValueError("Invalid Message Type.")
+    async def handle_energy_constraints_message(
+        self,
+        message: PEBCEnergyConstraint,
+        connection: "Connection",
+        send_okay: Awaitable,
+    ):
+        await send_okay
 
-    #     await send_okay
+    async def handle_instruction_status_update(
+        self,
+        message: InstructionStatusUpdate,
+        connection: "Connection",
+        send_okay: Awaitable,
+    ):
+        await send_okay
 
-    # async def handle_power_measurement_message(self, message, connection, send_okay):
-    #     self.is_correct_message_type(message, PowerMeasurement)
-    #     await send_okay
 
-    # async def handle_power_forecast_message(self, message, connection, send_okay):
-    #     self.is_correct_message_type(message, PowerForecast)
-    #     await send_okay
+# class PEBCComplianceReportController(PEBCController):
 
-    # async def handle_instruction_status_update(
-    #     self, message: InstructionStatusUpdate, connection, send_okay
-    # ):
-    #     await send_okay
+#     def __init__(self, compliance_report: ComplianceReport):
+#         super().__init__()
+
+#         self.compliance_report: ComplianceReport = compliance_report
+
+#     async def handle_power_constraints_message(
+#         self,
+#         message: PEBCPowerConstraints,
+#         connection: "Connection",
+#         send_okay: Awaitable,
+#     ):
+#         logger.info("TEST")
+#         await super().handle_power_constraints_message(message, connection, send_okay)
+
+#         finding = ComplianceFinding(PEBCPowerConstraints)
+#         finding.add_parameter(
+#             ComplianceParameter("PEBCPowerConstraints Provided.", ComplianceStatus.PASS)
+#         )
+
+#         self.compliance_report.add_finding(finding)
+
+#         logger.info()
