@@ -29,3 +29,10 @@ class FRBCTestCase(S2TestCase):
         controller: FRBCController,
     ):
         super().__init__(config, connection, controller)
+
+    async def wait_for_system_description(self):
+        await self.controller._system_description_received.wait()
+
+        # TODO: Validate system description
+
+        logger.info(self.controller.system_description)

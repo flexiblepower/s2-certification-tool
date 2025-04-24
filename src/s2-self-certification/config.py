@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseTestConfig(BaseModel):
+    enabled: bool = True
     pass
 
 

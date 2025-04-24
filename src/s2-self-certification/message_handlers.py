@@ -5,10 +5,7 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type
 from s2python.common import ControlType as ProtocolControlType
 from s2python.common import EnergyManagementRole, ResourceManagerDetails
 from s2python.message import S2Message
-from s2python.pebc import (
-    PEBCPowerConstraints,
-)
-from s2python.s2_connection import AssetDetails, SendOkay
+from s2python.s2_connection import SendOkay
 
 if TYPE_CHECKING:
     from connection import Connection
@@ -16,31 +13,6 @@ if TYPE_CHECKING:
 import logging
 
 logger = logging.getLogger(__name__)
-
-from s2python.version import S2_VERSION
-
-
-@dataclass
-class CEMAssetDetails(AssetDetails):  # pylint: disable=too-many-instance-attributes
-    available_control_types: Optional[List["ProtocolControlType"]] = None
-
-    @classmethod
-    def from_resource_manager_details(cls, msg: ResourceManagerDetails):
-        return cls(
-            currency=msg.currency,
-            firmware_version=msg.firmware_version,
-            instruction_processing_delay=msg.instruction_processing_delay,
-            manufacturer=msg.manufacturer,
-            model=msg.model,
-            name=msg.name,
-            provides_forecast=msg.provides_forecast,
-            provides_power_measurements=msg.provides_power_measurement_types,
-            resource_id=msg.resource_id,
-            roles=msg.roles,
-            serial_number=msg.serial_number,
-            available_control_types=msg.available_control_types,
-        )
-
 
 class MessageHandlerNotFoundError(Exception):
     pass
@@ -143,7 +115,4 @@ class MessageHandler:
                 )
 
 
-
 ROLE = EnergyManagementRole.CEM
-
-

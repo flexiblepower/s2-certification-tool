@@ -5,5 +5,7 @@ device_details:
 control_types:
   no_selection: null
   pebc: 
-      status_update_frequency: 10
-  frbc: null
+    enabled : true
+    status_update_frequency: 10
+  frbc:
+    enabled: true

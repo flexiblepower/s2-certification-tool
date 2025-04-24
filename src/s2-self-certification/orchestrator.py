@@ -18,7 +18,6 @@ from s2python.version import S2_VERSION
 
 
 from connection import Connection, SendOkay
-from message_handlers import CEMAssetDetails
 from controllers import Controller
 from test_suite.test_suite import TestSuite
 from util import wait_for_event_or_stop
@@ -31,7 +30,7 @@ class IntegrationTestOrchestrator:
 
     connection: "Connection"
 
-    asset_details: CEMAssetDetails
+    resource_manager_details: ResourceManagerDetails
 
     controller: Optional[Controller] = None
     controllers: Dict[ProtocolControlType, Controller]
@@ -46,17 +45,19 @@ class IntegrationTestOrchestrator:
         Type[S2Message], Callable[[S2Message, Awaitable[None]], CoroutineType]
     ]
 
+    test_suite: TestSuite
+
     running = False
 
     def __init__(
         self,
         available_control_types: Dict[ProtocolControlType, Controller],
-        test_suites: TestSuite,
+        test_suite: TestSuite,
     ) -> None:  # pylint: disable=too-many-arguments
 
         self.controllers = available_control_types
 
-        self.test_suites = test_suites
+        self.test_suite = test_suite
 
         self.handshake_message_handlers = {  # type: ignore
             Handshake: self.handle_handshake,
@@ -104,7 +105,7 @@ class IntegrationTestOrchestrator:
         # Wait until the handshake is complete before starting the testing.
         # TODO: Figure out how to include the handshake process in the testing.
         if self.controller:
-            await self.test_suites.execute(self.connection, self.controller)
+            await self.test_suite.execute(self.connection, self.controller)
 
     async def main_loop(self):
         await self.initiate_handshake()
@@ -126,7 +127,10 @@ class IntegrationTestOrchestrator:
         try:
             await self.connection.receive_messages()
         except S2ValidationError as e:
-            logger.error("S2 Validation Error encountered: %s", e)
+            if self.controller is not None:
+                self.controller.handle_s2_validation_exception(e)
+            else:
+                logger.error("S2 Validation Error encountered: %s", e)
         except:
             logger.exception("An error occurred whilst receiving messages.")
 
@@ -216,22 +220,37 @@ class IntegrationTestOrchestrator:
         # TODO: Select the control type in a better way.
         logger.info("Selecting Control Type.")
         if (
-            self.asset_details is None
-            or self.asset_details.available_control_types is None
+            self.resource_manager_details is None
+            or self.resource_manager_details.available_control_types is None
         ):
-            raise Exception("Missing Asset Details.")
+            raise Exception("Missing Resource Details.")
 
-        selected = self.asset_details.available_control_types[0]
+        controller: Optional[Controller] = None
 
-        if selected is None:
-            logger.error("No suitable control type found.")
+        while (
+            controller is None
+            and len(self.resource_manager_details.available_control_types) > 0
+        ):
+            control_type = self.resource_manager_details.available_control_types.pop()
+            if control_type in self.controllers:
+                logger.info(
+                    "Getting controller %s from %s", control_type, self.controllers
+                )
+                controller = self.controllers[control_type]
 
-        logger.info("Selecting control type %s", selected)
+        if controller is None:
+            logger.warning("No suitable control types available. Exiting...")
+            self.stop()
+            return
 
-        self.set_control_type(selected)
+        logger.info("Selecting control type %s", controller)
+
+        self.set_control_type(controller.control_type)
 
         await self.connection.send_msg_and_await_reception_status(
-            SelectControlType(message_id=uuid.uuid4(), control_type=selected)
+            SelectControlType(
+                message_id=uuid.uuid4(), control_type=controller.control_type
+            )
         )
 
     async def handle_rm_details(
@@ -239,8 +258,10 @@ class IntegrationTestOrchestrator:
         message: ResourceManagerDetails,
         send_okay: Awaitable[None],
     ):
+        if type(message) != ResourceManagerDetails:
+            raise ValueError("Expected a ResourceManagerDetails instance.")
 
-        self.asset_details = CEMAssetDetails.from_resource_manager_details(message)
+        self.resource_manager_details = message
 
         await send_okay
 

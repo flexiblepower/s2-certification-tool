@@ -80,7 +80,6 @@ class Connection:  # pylint: disable=too-many-instance-attributes
             )
 
         json_msg = s2_msg.to_json()
-        logger.debug("Sending message %s", json_msg)
         try:
             await self.ws.send(json_msg)
         except websockets.ConnectionClosedError as e:
@@ -95,13 +94,12 @@ class Connection:  # pylint: disable=too-many-instance-attributes
         logger.debug(
             "Responding to message %s with status %s", subject_message_id, status
         )
-        await self._send_and_forget(
-            ReceptionStatus(
-                subject_message_id=subject_message_id,
-                status=status,
-                diagnostic_label=diagnostic_label,
-            )
+        msg = ReceptionStatus(
+            subject_message_id=subject_message_id,
+            status=status,
+            diagnostic_label=diagnostic_label,
         )
+        await self._send_and_forget(msg)
 
     async def send_msg_and_await_reception_status(
         self,
@@ -153,16 +151,20 @@ class Connection:  # pylint: disable=too-many-instance-attributes
             if message_id:
                 await self.respond_with_reception_status(
                     subject_message_id=message_id,
-                    status=ReceptionStatusValues.INVALID_MESSAGE,
-                    diagnostic_label=str(e),
+                    status=ReceptionStatusValues.OK,  # TODO: Put this back to the correct error.
+                    diagnostic_label="",
+                    # status=ReceptionStatusValues.INVALID_MESSAGE,
+                    # diagnostic_label=str(e),
                 )
             else:
                 await self.respond_with_reception_status(
                     subject_message_id=uuid.UUID(
                         "00000000-0000-0000-0000-000000000000"
                     ),
-                    status=ReceptionStatusValues.INVALID_DATA,
-                    diagnostic_label="Message appears valid json but could not find a message_id field.",
+                    status=ReceptionStatusValues.OK,  # TODO: Put this back to the correct error.
+                    diagnostic_label="",
+                    # status=ReceptionStatusValues.INVALID_DATA,
+                    # diagnostic_label="Message appears valid json but could not find a message_id field.",
                 )
 
             # Raise the error so that we can handle it in the orchestrator

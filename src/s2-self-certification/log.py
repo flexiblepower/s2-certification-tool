@@ -10,17 +10,22 @@ LOGGING_CONFIG: Dict = {
             "()": "logging.Formatter",
             "fmt": "%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s",
         },
+        "short": {
+            "()": "logging.Formatter",
+            "fmt": "%(name)s:%(lineno)d - %(levelname)s - %(message)s",
+        },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "formatter": "default",
+            "formatter": "short",
             "stream": "ext://sys.stdout",
         },
     },
     "loggers": {
-        "": {"handlers": ["console"], "level": "DEBUG", "propagate": True},
-        "connection": {"handlers": ["console"], "level": "INFO", "propogate": False},
-        "orchestrator": {"handlers": ["console"], "level": "DEBUG", "propogate": False},
+        "": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "connection": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "orchestrator": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "websockets": {"handlers": ["console"], "level": "WARNING", "propagate": True},
     },
 }

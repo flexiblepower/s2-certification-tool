@@ -8,7 +8,7 @@ import logging
 import logging.config
 from typing import Dict
 
-from config import Config, load_config
+from config import Config, ControlTypeTestConfig, load_config
 from controllers import Controller, PEBCController, FRBCController
 from log import LOGGING_CONFIG
 from orchestrator import IntegrationTestOrchestrator
@@ -19,12 +19,22 @@ from test_suite.frbc_test_cases import FRBCTestCase
 
 logging.config.dictConfig(LOGGING_CONFIG)
 
-logging.getLogger("websockets").setLevel(logging.ERROR)
-
 logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser(prog="S2 Self Cert")
 parser.add_argument("config")
+
+
+def create_controllers_dict(config: Config) -> Dict[ProtocolControlType, Controller]:
+    controllers: Dict[ProtocolControlType, Controller] = {}
+
+    if config.control_types.frbc and config.control_types.frbc.enabled:
+        controllers[ProtocolControlType.FILL_RATE_BASED_CONTROL] = FRBCController()
+
+    if config.control_types.pebc and config.control_types.pebc.enabled:
+        controllers[ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL] = PEBCController()
+
+    return controllers
 
 
 async def main():
@@ -35,10 +45,7 @@ async def main():
 
     config: Config = load_config(args.config)
 
-    control_types: Dict[ProtocolControlType, Controller] = {
-        ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL: PEBCController(),
-        ProtocolControlType.FILL_RATE_BASED_CONTROL: FRBCController(),
-    }
+    controllers = create_controllers_dict(config)
 
     test_suite = (
         TestSuiteBuilder(config.control_types)
@@ -48,7 +55,7 @@ async def main():
     )
 
     orchestrator = IntegrationTestOrchestrator(
-        available_control_types=control_types, test_suites=test_suite
+        available_control_types=controllers, test_suite=test_suite
     )
 
     s2_server = S2Server("0.0.0.0", 8000, orchestrator)

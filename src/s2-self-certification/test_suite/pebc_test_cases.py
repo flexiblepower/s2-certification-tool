@@ -29,6 +29,7 @@ class PEBCTestCase(S2TestCase):
         controller: PEBCController,
     ):
         super().__init__(config, connection, controller)
+    
 
     async def wait_until_control_type_attrs_set(self):
         power_constraints = self.controller.power_constraints
