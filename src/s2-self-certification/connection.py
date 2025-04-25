@@ -207,6 +207,8 @@ class Connection:  # pylint: disable=too-many-instance-attributes
         except websockets.ConnectionClosedError as e:
             logger.error("Connection closed with error: %s", str(e))
             self._handle_ws_close()
+        except asyncio.CancelledError:
+            pass
 
     def _handle_ws_close(self):
         self._stop_event.set()

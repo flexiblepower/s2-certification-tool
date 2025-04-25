@@ -4,22 +4,25 @@ from typing import Optional
 from connection import Connection
 from s2python.common import ControlType as ProtocolControlType
 from s2python.frbc import FRBCSystemDescription
-from .controller import Controller
+from .controller import BaseController
 
 logger = logging.getLogger(__name__)
 
 
-class FRBCController(Controller):
+class FRBCController(BaseController):
     control_type = ProtocolControlType.FILL_RATE_BASED_CONTROL
-    system_description: FRBCSystemDescription
+    system_description: Optional[FRBCSystemDescription] = None
 
     _system_description_received: asyncio.Event
 
     def __init__(self):
         super().__init__()
+        self.system_description = None
         self._system_description_received = asyncio.Event()
 
-    async def handle_power_constraints_message(
+        self.add_handler(FRBCSystemDescription, self.handle_system_description_message)
+
+    async def handle_system_description_message(
         self, message: FRBCSystemDescription, connection: "Connection", send_okay
     ):
         if not self.is_correct_message_type(message, FRBCSystemDescription):

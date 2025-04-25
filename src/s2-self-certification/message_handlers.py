@@ -49,7 +49,10 @@ class S2MessageAwaiter:
 
     def receive_message(self, message: S2Message):
         if message.message_type in self.awaiting:
-            logger.debug("Received message that is being waited for. Setting event.")
+            logger.debug(
+                "Received %s message that is being waited for. Setting event.",
+                message.message_type,
+            )
             awaiting = self.awaiting[message.message_type]
             if self.awaiting:
                 # Set the message first before triggering the event to make sure that the
@@ -57,7 +60,9 @@ class S2MessageAwaiter:
                 awaiting[1] = message  # type: ignore
                 awaiting[0].set()
         else:
-            logger.debug("Received message but nothing waiting for it.")
+            logger.debug(
+                "Received %s message but nothing waiting for it.", message.message_type
+            )
 
 
 class MessageHandler:
@@ -96,11 +101,11 @@ class MessageHandler:
         self, message: S2Message, connection: "Connection", *args, **kwargs
     ):
         try:
+
             handler = self.handlers[type(message)]
 
             send_okay = SendOkay(connection, message.message_id)  # type: ignore[attr-defined, union-attr]
 
-            self.message_awaiter.receive_message(message)
             result = await handler(
                 message, connection, send_okay.run_async(), *args, **kwargs
             )
@@ -118,6 +123,8 @@ class MessageHandler:
                 raise MessageHandlerNotFoundError(
                     f"Command does not exist for message type '{ message.message_type}'"
                 )
+        finally:
+            self.message_awaiter.receive_message(message)
 
 
 ROLE = EnergyManagementRole.CEM

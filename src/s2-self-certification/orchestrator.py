@@ -196,7 +196,6 @@ class IntegrationTestOrchestrator:
         self.running = False
 
     def stop(self):
-        logger.info("Stopping.")
         self._stop_event.set()
 
     def is_running(self):

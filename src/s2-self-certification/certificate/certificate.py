@@ -2,7 +2,7 @@ from email import message
 import logging
 from datetime import datetime
 import json
-from typing import List, Type
+from typing import List, Optional, Type
 from enum import Enum
 
 from black.output import out
@@ -35,7 +35,18 @@ class ComplianceFinding(BaseModel):
     status: ComplianceStatus = ComplianceStatus.PASS
     parameters: List[ComplianceParameter] = []
 
-    def add_parameter(self, param: ComplianceParameter):
+    def add_parameter(
+        self,
+        name: Optional[str] = None,
+        status: Optional[ComplianceStatus] = None,
+        param: Optional[ComplianceParameter] = None,
+    ):
+        if param is None and name is not None and status is not None:
+            param = ComplianceParameter(name=name, status=status)
+        elif param is None:
+            raise ValueError("Either the param must be set or name and status.")
+        
+
         self.parameters.append(param)
 
         if param.status == ComplianceStatus.FAIL:

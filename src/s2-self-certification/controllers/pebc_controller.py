@@ -9,7 +9,7 @@ from s2python.pebc import (
     PEBCEnergyConstraint,
     PEBCPowerConstraints,
 )
-from .controller import Controller
+from .controller import BaseController, Controller
 
 if TYPE_CHECKING:
     from connection import Connection
@@ -19,11 +19,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class PEBCController(Controller):
+class PEBCController(BaseController):
     control_type = ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL
-    power_constraints: Optional[PEBCPowerConstraints]
+    power_constraints: Optional[PEBCPowerConstraints] = None
 
-    _power_constraints_received = asyncio.Event()
+    _power_constraints_received: asyncio.Event
 
     def __init__(self):
         super().__init__()

@@ -1,12 +1,24 @@
 import abc
+import asyncio
+import functools
+import inspect
 import logging
-from typing import TYPE_CHECKING, Dict, List, Type
+from typing import TYPE_CHECKING, Dict, List, Optional, Type
 
-from certificate.certificate import ComplianceReport
+from click import Option
+import test
+
+from certificate.certificate import (
+    ComplianceFinding,
+    ComplianceParameter,
+    ComplianceReport,
+    ComplianceStatus,
+)
 from config import BaseTestConfig, ControlTypeTestConfig
 from connection import Connection
 from controllers.controller import Controller
 from s2python.common import ControlType as ProtocolControlType
+from s2python.message import S2Message
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +26,8 @@ logger = logging.getLogger(__name__)
 class S2TestCase(abc.ABC):
     control_type: ProtocolControlType = ProtocolControlType.NO_SELECTION
     config: BaseTestConfig
+
+    TIMEOUT = 5
 
     def __init__(
         self,
@@ -27,9 +41,72 @@ class S2TestCase(abc.ABC):
         self.config = config
         self.report = report
 
-    @abc.abstractmethod
-    async def execute(self):
+    async def check_receive_message_type(
+        self,
+        message_type: Type[S2Message],
+        report_finding: Optional[ComplianceFinding] = None,
+    ):
+        logger.info("Checking for %s", message_type)
+
+        if report_finding is None:
+            report_finding = ComplianceFinding(message_type=message_type)
+
+        try:
+            messages: list = self.controller.get_received_messages(message_type)
+            if len(messages) < 1:
+                message = await self.controller.message_awaiter.wait_for_message(
+                    message_type, self.TIMEOUT
+                )
+            else:
+                message = messages[0]
+
+            report_finding.add_parameter(
+                name=f"{message_type} Provided.",
+                status=ComplianceStatus.PASS,
+            )
+
+            return message
+        except asyncio.TimeoutError:
+            report_finding.add_parameter(
+                name=f"{message_type} Not Provided.",
+                status=ComplianceStatus.FAIL,
+            )
+            return None
+
+    @classmethod
+    def test_case(cls, func):
+        func._is_test_case = True
+        return func
+
+    async def setup(self):
+        """Override in subclass for per-test setup."""
         pass
+
+    async def teardown(self):
+        """Override in subclass for per-test teardown."""
+        pass
+
+    def get_test_cases(self):
+        test_cases = []
+        for name, method in inspect.getmembers(self, predicate=inspect.ismethod):
+            if getattr(method, "_is_test_case", False):
+                test_cases.append((name, method))
+        return test_cases
+
+    async def execute(self):
+        logger.info(
+            "Executing test case %s. Has %s tests.",
+            self.__class__.__name__,
+            self.get_test_cases(),
+        )
+        for name, method in self.get_test_cases():
+            logger.info(f"Running test case: {name}")
+            await self.setup()
+            try:
+                await method()
+            finally:
+                await self.teardown()
+        logger.info("Test case %s complete.", self.__class__.__name__)
 
 
 class TestSuite:
