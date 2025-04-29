@@ -1,0 +1,15 @@
+[project]
+name = "s2-testing"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.11.3",
+    "pyyaml>=6.0.2",
+    "s2-python",
+    "websockets>=13.1",
+]
+
+[tool.uv.sources]
+s2-python = { path = "../../s2-python", editable = true }

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from typing import Optional
-from connection import Connection
+from s2testing.connection import BaseRMConnection
 from s2python.common import ControlType as ProtocolControlType
 from s2python.frbc import FRBCSystemDescription
 from .controller import BaseController
@@ -23,7 +23,7 @@ class FRBCController(BaseController):
         self.add_handler(FRBCSystemDescription, self.handle_system_description_message)
 
     async def handle_system_description_message(
-        self, message: FRBCSystemDescription, connection: "Connection", send_okay
+        self, message: FRBCSystemDescription, connection: "BaseRMConnection", send_okay
     ):
         if not self.is_correct_message_type(message, FRBCSystemDescription):
             raise ValueError("Invalid Message Type.")

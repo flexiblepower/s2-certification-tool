@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: s2-testing
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: pydantic>=2.11.3
+Requires-Dist: pyyaml>=6.0.2
+Requires-Dist: s2-python
+Requires-Dist: websockets>=13.1

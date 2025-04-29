@@ -3,6 +3,7 @@ import json
 import logging
 import threading
 import uuid
+import abc
 from typing import Type
 
 import websockets
@@ -11,7 +12,6 @@ from s2python.message import S2Message
 from s2python.reception_status_awaiter import ReceptionStatusAwaiter
 from s2python.s2_parser import S2Parser
 from s2python.s2_validation_error import S2ValidationError
-from websockets.asyncio.connection import Connection as WSConnection
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +20,10 @@ class SendOkay:
     """Mostly copied over from S2-Python library"""
 
     status_is_send: threading.Event
-    connection: "Connection"
+    connection: "BaseRMConnection"
     subject_message_id: uuid.UUID
 
-    def __init__(self, connection: "Connection", subject_message_id: uuid.UUID):
+    def __init__(self, connection: "BaseRMConnection", subject_message_id: uuid.UUID):
         self.status_is_send = threading.Event()
         self.connection = connection
         self.subject_message_id = subject_message_id
@@ -48,14 +48,13 @@ class SendOkay:
             await self.run_async()
 
 
-class Connection:  # pylint: disable=too-many-instance-attributes
+class BaseRMConnection(abc.ABC):  # pylint: disable=too-many-instance-attributes
     """
     Manged the websocket connection to the RM.
     Puts all received messages onto the message queue so they can be retrieved by other tasks.
     Based on the S2Connection class is S2-Python library.
     """
 
-    ws: WSConnection
     s2_parser: S2Parser
 
     reception_status_awaiter: ReceptionStatusAwaiter
@@ -64,8 +63,7 @@ class Connection:  # pylint: disable=too-many-instance-attributes
 
     _stop_event: asyncio.Event
 
-    def __init__(self, ws) -> None:  # pylint: disable=too-many-arguments
-        self.ws = ws
+    def __init__(self) -> None:  # pylint: disable=too-many-arguments
         self.reception_status_awaiter = ReceptionStatusAwaiter()
         self.s2_parser = S2Parser()
 
@@ -73,15 +71,18 @@ class Connection:  # pylint: disable=too-many-instance-attributes
 
         self.message_queue = asyncio.Queue()
 
-    async def _send_and_forget(self, s2_msg: S2Message) -> None:
-        if self.ws is None:
-            raise RuntimeError(
-                "Cannot send messages if websocket connection is not yet established."
-            )
+    @abc.abstractmethod
+    async def send(self, message: str):
+        pass
 
+    @abc.abstractmethod
+    async def receive(self):
+        pass
+
+    async def _send_and_forget(self, s2_msg: S2Message) -> None:
         json_msg = s2_msg.to_json()
         try:
-            await self.ws.send(json_msg)
+            await self.send(json_msg)
         except websockets.ConnectionClosedError as e:
             logger.error("Unable to send message %s.", s2_msg.message_type)
 
@@ -185,38 +186,18 @@ class Connection:  # pylint: disable=too-many-instance-attributes
                 await self.message_queue.put(s2_msg)
 
     async def receive_messages(self):
-        if self.ws is None:
-            raise RuntimeError(
-                "Cannot receive messages if websocket connection is not yet established."
-            )
-        logger.debug("Connection has started to receive messages.")
+        while not self._stop_event.is_set():
+            # Timeout was added so that this task can exit at some point since if it never receives another message it just sits waiting.
+            try:
+                message = await asyncio.wait_for(self.receive(), timeout=1)
+                logger.debug("Received Message: %s", message)
+            except asyncio.TimeoutError:
+                continue
 
-        try:
-            while not self._stop_event.is_set():
-                # Timeout was added so that this task can exit at some point since if it never receives another message it just sits waiting.
-                try:
-                    message = await asyncio.wait_for(self.ws.recv(), timeout=1)
-                    logger.debug("Received Message: %s", message)
-                except asyncio.TimeoutError:
-                    continue
-
-                await self.parse_received_message(str(message))
-        except websockets.ConnectionClosedOK:
-            logger.info("Connection closed normally by remote.")
-            self._handle_ws_close()
-        except websockets.ConnectionClosedError as e:
-            logger.error("Connection closed with error: %s", str(e))
-            self._handle_ws_close()
-        except asyncio.CancelledError:
-            pass
-
-    def _handle_ws_close(self):
-        self._stop_event.set()
+            await self.parse_received_message(str(message))
 
     async def get_next_message(self):
         return await self.message_queue.get()
 
-    async def stop(self):
+    def stop(self):
         self._stop_event.set()
-
-        await self.ws.close()

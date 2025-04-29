@@ -1,5 +1,5 @@
 from typing import Callable, Type
-from controllers.controller import Controller
+from .controller import Controller
 from s2python.message import S2Message
 
 

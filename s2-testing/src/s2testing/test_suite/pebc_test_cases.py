@@ -2,16 +2,16 @@ import datetime
 import logging
 import uuid
 
-from certificate.certificate import (
+from s2testing.certificate.certificate import (
     ComplianceFinding,
     ComplianceParameter,
     ComplianceReport,
     ComplianceStatus,
 )
-from config import BaseTestConfig, PEBCTestConfig
-from connection import Connection
-from controllers.controller import Controller
-from controllers.pebc_controller import PEBCController
+from s2testing.config import BaseTestConfig, PEBCTestConfig
+from s2testing.connection import BaseRMConnection
+from s2testing.controllers.controller import Controller
+from s2testing.controllers.pebc_controller import PEBCController
 from s2python.common import (
     ControlType as ProtocolControlType,
     PowerMeasurement,
@@ -23,8 +23,8 @@ from s2python.pebc import (
     PEBCPowerEnvelope,
     PEBCPowerEnvelopeElement,
 )
-from test_suite.base_test_case import NoSelectionTestCase
-from test_suite.test_suite import S2TestCase
+from s2testing.test_suite.base_test_case import NoSelectionTestCase
+from s2testing.test_suite.test_suite import S2TestCase
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class PEBCTestCase(NoSelectionTestCase):
     def __init__(
         self,
         config: PEBCTestConfig,
-        connection: Connection,
+        connection: BaseRMConnection,
         controller: PEBCController,
         report: ComplianceReport,
     ):

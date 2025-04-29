@@ -9,15 +9,20 @@ import logging
 import logging.config
 from typing import Dict
 
-from certificate.certificate import ComplianceReport
-from config import Config, ControlTypeTestConfig, load_config
-from controllers import Controller, PEBCController, FRBCController
+from s2testing.certificate.certificate import ComplianceReport
+from s2testing.config import Config, ControlTypeTestConfig, load_config
+from s2testing.controllers import (
+    Controller,
+    BaseController,
+    PEBCController,
+    FRBCController,
+)
 from log import LOGGING_CONFIG
 from orchestrator import IntegrationTestOrchestrator
 from s2python.common import ControlType as ProtocolControlType
 from server import S2Server
-from test_suite import PEBCTestCase, TestSuiteBuilder
-from test_suite.frbc_test_cases import FRBCTestCase
+from s2testing.test_suite import PEBCTestCase, TestSuiteBuilder
+from s2testing.test_suite.frbc_test_cases import FRBCTestCase
 
 logging.config.dictConfig(LOGGING_CONFIG)
 
@@ -32,6 +37,8 @@ def create_controllers_dict(
 ) -> Dict[ProtocolControlType, Controller]:
     controllers: Dict[ProtocolControlType, Controller] = {}
 
+    controllers[ProtocolControlType.NO_SELECTION] = BaseController()
+
     if config.control_types.frbc and config.control_types.frbc.enabled:
         controllers[ProtocolControlType.FILL_RATE_BASED_CONTROL] = FRBCController()
 
@@ -42,12 +49,13 @@ def create_controllers_dict(
 
 
 async def main():
-    logger.info("-" * 40)
-    logger.info("Starting...")
 
     args = parser.parse_args()
 
     config: Config = load_config(args.config)
+
+    logger.info("-" * 40)
+    logger.info(f"Starting in {config.mode} mode...")
 
     report = ComplianceReport(timestamp=datetime.now())
 

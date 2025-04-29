@@ -1,13 +1,10 @@
 import asyncio
 import logging
-from tracemalloc import stop
 import uuid
 from types import CoroutineType
 from typing import Awaitable, Callable, Coroutine, Dict, Optional, Type
 
-from mypyc.ir.ops import Value
-
-from certificate.certificate import ComplianceReport
+from s2testing.certificate.certificate import ComplianceReport
 from s2python.common import ControlType as ProtocolControlType
 from s2python.common import (
     EnergyManagementRole,
@@ -21,10 +18,11 @@ from s2python.s2_validation_error import S2ValidationError
 from s2python.version import S2_VERSION
 
 
-from connection import Connection, SendOkay
-from controllers import Controller
-from test_suite.test_suite import TestSuite
-from util import wait_for_event_or_stop
+from connection import Connection
+from s2testing.connection import SendOkay
+from s2testing.controllers import Controller
+from s2testing.test_suite.test_suite import TestSuite
+from s2testing.util import wait_for_event_or_stop
 
 logger = logging.getLogger(__name__)
 

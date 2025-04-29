@@ -1,12 +1,12 @@
-from certificate.certificate import (
+from ..certificate.certificate import (
     ComplianceFinding,
     ComplianceReport,
     ComplianceStatus,
 )
-from config import BaseTestConfig
-from connection import Connection
-from controllers.controller import BaseController
-from test_suite.test_suite import S2TestCase
+from ..config import BaseTestConfig
+from ..connection import BaseRMConnection
+from ..controllers.controller import BaseController
+from ..test_suite.test_suite import S2TestCase
 
 from s2python.common import (
     PowerForecast,
@@ -28,7 +28,7 @@ class NoSelectionTestCase(S2TestCase):
     def __init__(
         self,
         config: BaseTestConfig,
-        connection: Connection,
+        connection: BaseRMConnection,
         controller: BaseController,
         report: ComplianceReport,
     ):

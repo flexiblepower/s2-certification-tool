@@ -5,18 +5,15 @@ import inspect
 import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Type
 
-from click import Option
-import test
-
-from certificate.certificate import (
+from s2testing.certificate.certificate import (
     ComplianceFinding,
     ComplianceParameter,
     ComplianceReport,
     ComplianceStatus,
 )
-from config import BaseTestConfig, ControlTypeTestConfig
-from connection import Connection
-from controllers.controller import Controller
+from s2testing.config import BaseTestConfig, ControlTypeTestConfig
+from s2testing.connection import BaseRMConnection
+from s2testing.controllers.controller import Controller
 from s2python.common import ControlType as ProtocolControlType
 from s2python.message import S2Message
 
@@ -32,7 +29,7 @@ class S2TestCase(abc.ABC):
     def __init__(
         self,
         config: BaseTestConfig,
-        connection: Connection,
+        connection: BaseRMConnection,
         controller: Controller,
         report: ComplianceReport,
     ):
@@ -133,7 +130,7 @@ class TestSuite:
         else:
             self.test_cases[test_case.control_type] = [test_case]
 
-    async def execute(self, connection: Connection, controller: Controller):
+    async def execute(self, connection: BaseRMConnection, controller: Controller):
         control_type = controller.control_type
         test_cases = self.test_cases.get(control_type, [])
         logger.info(self.test_cases)

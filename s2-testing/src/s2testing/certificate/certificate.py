@@ -5,7 +5,6 @@ import json
 from typing import List, Optional, Type
 from enum import Enum
 
-from black.output import out
 from pydantic import BaseModel, field_serializer
 import yaml
 

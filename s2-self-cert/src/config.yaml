@@ -2,6 +2,7 @@
 device_details:
   name: Some Device
   manufacturer: ACME
+mode: testing
 control_types:
   no_selection: null
   pebc: 

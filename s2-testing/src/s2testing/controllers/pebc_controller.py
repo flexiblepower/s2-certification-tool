@@ -9,10 +9,8 @@ from s2python.pebc import (
     PEBCEnergyConstraint,
     PEBCPowerConstraints,
 )
-from .controller import BaseController, Controller
-
-if TYPE_CHECKING:
-    from connection import Connection
+from .controller import BaseController
+from ..connection import BaseRMConnection
 
 import logging
 
@@ -38,7 +36,7 @@ class PEBCController(BaseController):
     async def handle_power_constraints_message(
         self,
         message: PEBCPowerConstraints,
-        connection: "Connection",
+        connection: "BaseRMConnection",
         send_okay: Awaitable,
     ):
         logger.info("Received power constraints.")
@@ -50,7 +48,7 @@ class PEBCController(BaseController):
     async def handle_energy_constraints_message(
         self,
         message: PEBCEnergyConstraint,
-        connection: "Connection",
+        connection: "BaseRMConnection",
         send_okay: Awaitable,
     ):
         await send_okay
@@ -58,7 +56,7 @@ class PEBCController(BaseController):
     async def handle_instruction_status_update(
         self,
         message: InstructionStatusUpdate,
-        connection: "Connection",
+        connection: "BaseRMConnection",
         send_okay: Awaitable,
     ):
         await send_okay

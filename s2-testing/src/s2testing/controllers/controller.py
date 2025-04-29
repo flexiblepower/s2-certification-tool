@@ -1,8 +1,8 @@
 import asyncio
 from email import message
 from typing import Awaitable, Callable, Optional, Type
-from connection import Connection
-from message_handlers import MessageHandler
+from ..connection import BaseRMConnection
+from s2testing.message_handlers import MessageHandler
 from s2python.common import (
     ControlType as ProtocolControlType,
     PowerForecast,
@@ -28,7 +28,11 @@ class Controller(MessageHandler):
         super().__init__()
 
     def handle_message(
-        self, message: S2Message, connection: Connection, *args, **kwargs
+        self,
+        message: S2Message,
+        connection: "BaseRMConnection",
+        *args,
+        **kwargs
     ):
         try:
             result = super().handle_message(message, connection, *args, **kwargs)
@@ -63,7 +67,7 @@ class Controller(MessageHandler):
     async def handle_rm_details(
         self,
         message: ResourceManagerDetails,
-        connection: "Connection",
+        connection: "BaseRMConnection",
         send_okay: Awaitable,
     ):
         self.resource_manager_details = message
@@ -83,7 +87,7 @@ class BaseController(Controller):
     async def handle_power_measurement_message(
         self,
         message: PowerMeasurement,
-        connection: "Connection",
+        connection: "BaseRMConnection",
         send_okay: Awaitable,
     ):
 
@@ -92,7 +96,7 @@ class BaseController(Controller):
     async def handle_power_forecast_message(
         self,
         message: PowerForecast,
-        connection: "Connection",
+        connection: "BaseRMConnection",
         send_okay: Awaitable,
     ):
 

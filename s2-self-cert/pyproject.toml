@@ -1,0 +1,15 @@
+[project]
+name = "s2-self-cert"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "s2-python",
+    "s2-testing",
+]
+
+[tool.uv.sources]
+s2-python = { path = "../../s2-python", editable = true }
+s2-testing = { path = "../s2-testing", editable = true }

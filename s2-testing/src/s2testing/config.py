@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Literal
 
 import yaml
 from pydantic import BaseModel
@@ -47,6 +47,7 @@ class DeviceDetails(BaseModel):
 
 
 class Config(BaseModel):
+    mode: Literal["testing", "certification"]
     device_details: DeviceDetails
     control_types: ControlTypeTestConfig
 
