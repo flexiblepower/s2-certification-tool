@@ -1,4 +1,8 @@
-from certificate.certificate import ComplianceFinding, ComplianceReport
+from certificate.certificate import (
+    ComplianceFinding,
+    ComplianceReport,
+    ComplianceStatus,
+)
 from config import BaseTestConfig
 from connection import Connection
 from controllers.controller import BaseController
@@ -8,12 +12,13 @@ from s2python.common import (
     PowerForecast,
     PowerMeasurement,
     ControlType as ProtocolControlType,
+    ResourceManagerDetails,
 )
 
 
 class NoSelectionTestCase(S2TestCase):
 
-    control_type = ProtocolControlType.FILL_RATE_BASED_CONTROL
+    control_type = ProtocolControlType.NO_SELECTION
 
     TIMEOUT = 5
 
@@ -29,7 +34,20 @@ class NoSelectionTestCase(S2TestCase):
     ):
         super().__init__(config, connection, controller, report)
 
-    @S2TestCase.test_case
+    async def test_validate_rm_details_received(self):
+        finding = ComplianceFinding(message_type=ResourceManagerDetails)
+
+        if self.controller.resource_manager_details is not None:
+            finding.add_parameter(
+                "ResourceManagerDetails Received.", ComplianceStatus.PASS
+            )
+            finding.add_parameter(
+                "ResourceManagerDetails Valid.", ComplianceStatus.PASS
+            )
+
+        self.report.add_finding(finding)
+
+    @S2TestCase.test
     async def test_receive_power_forecast(self):
 
         finding = ComplianceFinding(message_type=PowerForecast)
@@ -38,7 +56,7 @@ class NoSelectionTestCase(S2TestCase):
 
         self.report.add_finding(finding)
 
-    @S2TestCase.test_case
+    @S2TestCase.test
     async def test_receive_power_measurement(self):
         finding = ComplianceFinding(message_type=PowerMeasurement)
 

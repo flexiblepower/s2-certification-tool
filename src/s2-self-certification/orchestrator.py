@@ -36,7 +36,7 @@ class IntegrationTestOrchestrator:
 
     resource_manager_details: Optional[ResourceManagerDetails] = None
 
-    controller: Optional[Controller] = None
+    controller: Controller
     controllers: Dict[ProtocolControlType, Controller]
 
     _tasks = set()
@@ -62,6 +62,11 @@ class IntegrationTestOrchestrator:
 
         self.controllers = available_control_types
 
+        controller = available_control_types.get(ProtocolControlType.NO_SELECTION)
+        if controller is None:
+            raise ValueError("A NO_SELECTION controller must be provided.")
+        self.controller = controller
+
         self.test_suite = test_suite
 
         self.handshake_message_handlers = {  # type: ignore
@@ -74,8 +79,10 @@ class IntegrationTestOrchestrator:
         self.report = report
 
     def set_control_type(self, control_type: ProtocolControlType):
-        logger.info(self.controllers)
-        self.controller = self.controllers[control_type]
+        controller = self.controllers[control_type]
+        # Put the RM Details into the new controller.
+        controller.resource_manager_details = controller.resource_manager_details
+        self.controller = controller
 
     async def process_received_messages(self):
         """AsyncIO task which pops messages off the queue and processes them using the control type."""
@@ -213,6 +220,8 @@ class IntegrationTestOrchestrator:
             )
         )
 
+        self.controller.handshake_acknowledged()
+
     async def handle_handshake(
         self,
         message: Handshake,
@@ -240,6 +249,8 @@ class IntegrationTestOrchestrator:
                 selected_protocol_version=message.supported_protocol_versions[0],
             )
         )
+
+        self.controller.handshake_received()
 
     async def send_select_control_type(self):
         # TODO: Select the control type in a better way.
@@ -286,11 +297,13 @@ class IntegrationTestOrchestrator:
         message: ResourceManagerDetails,
         send_okay: Awaitable[None],
     ):
-        if type(message) != ResourceManagerDetails:
-            raise ValueError("Expected a ResourceManagerDetails instance.")
 
         self.resource_manager_details = message
 
-        await send_okay
+        if self.connection is None:
+            raise ValueError("Connection not set.")
+
+        # Pass it to the no selection controller to use it as part of the test cases.
+        await self.controller.handle_message(message, self.connection, send_okay)
 
         self._handshake_complete.set()

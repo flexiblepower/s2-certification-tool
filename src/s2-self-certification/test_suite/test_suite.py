@@ -51,6 +51,7 @@ class S2TestCase(abc.ABC):
         if report_finding is None:
             report_finding = ComplianceFinding(message_type=message_type)
 
+        message = None
         try:
             messages: list = self.controller.get_received_messages(message_type)
             if len(messages) < 1:
@@ -59,22 +60,29 @@ class S2TestCase(abc.ABC):
                 )
             else:
                 message = messages[0]
+        except asyncio.TimeoutError:
+            message = None
 
+        if message is None:
+            messages: list = self.controller.get_received_messages(message_type)
+            if len(messages) > 0:
+                message = messages[0]
+
+        if message is not None:
             report_finding.add_parameter(
-                name=f"{message_type} Provided.",
+                name=f"{message_type.__name__} Provided.",
                 status=ComplianceStatus.PASS,
             )
-
-            return message
-        except asyncio.TimeoutError:
+        else:
             report_finding.add_parameter(
-                name=f"{message_type} Not Provided.",
+                name=f"{message_type.__name__} Not Provided.",
                 status=ComplianceStatus.FAIL,
             )
-            return None
+
+        return message
 
     @classmethod
-    def test_case(cls, func):
+    def test(cls, func):
         func._is_test_case = True
         return func
 

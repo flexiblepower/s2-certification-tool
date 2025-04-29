@@ -60,7 +60,7 @@ class PEBCTestCase(NoSelectionTestCase):
             await self.controller._power_constraints_received.wait()
             logger.info("Power Constraints is set.")
 
-    @S2TestCase.test_case
+    @S2TestCase.test
     async def validate_power_constraints_set(self):
         await self.wait_until_power_constraints_set()
 

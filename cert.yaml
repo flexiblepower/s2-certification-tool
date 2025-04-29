@@ -1,12 +1,12 @@
 findings:
 - message_type: PowerForecast
   parameters:
-  - name: <class 's2python.common.power_forecast.PowerForecast'> Not Provided.
-    status: FAIL
-  status: FAIL
+  - name: PowerForecast Provided.
+    status: PASS
+  status: PASS
 - message_type: PowerMeasurement
   parameters:
-  - name: <class 's2python.common.power_measurement.PowerMeasurement'> Provided.
+  - name: PowerMeasurement Provided.
     status: PASS
   status: PASS
 - message_type: PEBCPowerConstraints
@@ -14,4 +14,4 @@ findings:
   - name: PEBCPowerConstraints Provided.
     status: PASS
   status: PASS
-timestamp: 2025-04-25 16:34:03.628891
+timestamp: 2025-04-28 09:55:21.153769
