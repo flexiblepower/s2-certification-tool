@@ -69,6 +69,7 @@ class CertificationServerManager(AsyncTaskManager):
     controller: Optional[ServerController] = None
 
     def __init__(self, websocket: WebSocket) -> None:
+        super().__init__()
         self.client_connection = ClientConnection(websocket)
         self.rm_connection = RMConnection(self.client_connection)
 

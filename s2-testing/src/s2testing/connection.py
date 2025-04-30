@@ -48,7 +48,47 @@ class SendOkay:
             await self.run_async()
 
 
-class BaseRMConnection(abc.ABC):  # pylint: disable=too-many-instance-attributes
+class BaseConnection(abc.ABC):
+
+    message_queue: asyncio.Queue
+
+    _stop_event: asyncio.Event
+
+    def __init__(self) -> None:  # pylint: disable=too-many-arguments
+        self._stop_event = asyncio.Event()
+
+        self.message_queue = asyncio.Queue()
+
+    @abc.abstractmethod
+    async def send(self, message: str):
+        pass
+
+    @abc.abstractmethod
+    async def receive(self):
+        pass
+
+    async def process_received_message(self, message: str):
+        await self.message_queue.put(message)
+
+    async def receive_messages(self):
+        while not self._stop_event.is_set():
+            # Timeout was added so that this task can exit at some point since if it never receives another message it just sits waiting.
+            try:
+                message = await asyncio.wait_for(self.receive(), timeout=1)
+                logger.debug("Received Message: %s", message)
+            except asyncio.TimeoutError:
+                continue
+
+            await self.process_received_message(str(message))
+
+    async def get_next_message(self):
+        return await self.message_queue.get()
+
+    def stop(self):
+        self._stop_event.set()
+
+
+class BaseRMConnection(BaseConnection):  # pylint: disable=too-many-instance-attributes
     """
     Manged the websocket connection to the RM.
     Puts all received messages onto the message queue so they can be retrieved by other tasks.
@@ -59,17 +99,12 @@ class BaseRMConnection(abc.ABC):  # pylint: disable=too-many-instance-attributes
 
     reception_status_awaiter: ReceptionStatusAwaiter
 
-    message_queue: asyncio.Queue
-
     _stop_event: asyncio.Event
 
     def __init__(self) -> None:  # pylint: disable=too-many-arguments
+        super().__init__()
         self.reception_status_awaiter = ReceptionStatusAwaiter()
         self.s2_parser = S2Parser()
-
-        self._stop_event = asyncio.Event()
-
-        self.message_queue = asyncio.Queue()
 
     @abc.abstractmethod
     async def send(self, message: str):
@@ -134,7 +169,7 @@ class BaseRMConnection(abc.ABC):  # pylint: disable=too-many-instance-attributes
 
         return reception_status
 
-    async def parse_received_message(self, message: str):
+    async def process_received_message(self, message: str):
         try:
             s2_msg: S2Message = self.s2_parser.parse_as_any_message(message)
         except json.JSONDecodeError:
@@ -185,20 +220,3 @@ class BaseRMConnection(abc.ABC):  # pylint: disable=too-many-instance-attributes
                 await self.reception_status_awaiter.receive_reception_status(s2_msg)
             else:
                 await self.message_queue.put(s2_msg)
-
-    async def receive_messages(self):
-        while not self._stop_event.is_set():
-            # Timeout was added so that this task can exit at some point since if it never receives another message it just sits waiting.
-            try:
-                message = await asyncio.wait_for(self.receive(), timeout=1)
-                logger.debug("Received Message: %s", message)
-            except asyncio.TimeoutError:
-                continue
-
-            await self.parse_received_message(str(message))
-
-    async def get_next_message(self):
-        return await self.message_queue.get()
-
-    def stop(self):
-        self._stop_event.set()

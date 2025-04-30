@@ -3,7 +3,7 @@ import logging
 import signal
 
 from connection import Connection
-from orchestrator import IntegrationTestOrchestrator
+from s2testing.orchestrator import IntegrationTestOrchestrator
 from websockets.asyncio.connection import Connection as WSConnection
 from websockets.asyncio.server import serve as ws_serve
 

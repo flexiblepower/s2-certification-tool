@@ -18,16 +18,18 @@ from s2python.s2_validation_error import S2ValidationError
 from s2python.version import S2_VERSION
 
 
-from .connection import BaseRMConnection
+from ..connection import BaseRMConnection
+from ..async_task_manager import AsyncTaskManager
+from .base import Orchestrator
 from s2testing.connection import SendOkay
 from s2testing.controllers import Controller
 from s2testing.test_suite.test_suite import TestSuite
-from .async_task_manager import AsyncTaskManager
 from s2testing.util import wait_for_event_or_stop
 
 logger = logging.getLogger(__name__)
 
-class IntegrationTestOrchestrator(AsyncTaskManager):
+
+class IntegrationTestOrchestrator(Orchestrator):
     role: EnergyManagementRole = EnergyManagementRole.CEM
 
     connection: Optional["BaseRMConnection"] = None
@@ -36,9 +38,6 @@ class IntegrationTestOrchestrator(AsyncTaskManager):
 
     controller: Controller
     controllers: Dict[ProtocolControlType, Controller]
-
-    # When set the main loop of Connection will trigger the stopping of all `_tasks`
-    _stop_event: asyncio.Event
 
     # The functions which handle the Handshake messages. All other messages should be handled by the controllers.
     handshake_message_handlers: Dict[
@@ -77,40 +76,18 @@ class IntegrationTestOrchestrator(AsyncTaskManager):
         controller.resource_manager_details = controller.resource_manager_details
         self.controller = controller
 
-    async def process_received_messages(self):
-        """AsyncIO task which pops messages off the queue and processes them using the control type."""
-
-        if self.connection is None:
-            raise ValueError("Connection not set.")
-
-        try:
-            while not self._stop_event.is_set():
-                try:
-                    # Use a timeout to periodically check for cancellation
-                    msg: S2Message = await asyncio.wait_for(
-                        self.connection.get_next_message(), timeout=1.0
-                    )
-                except asyncio.TimeoutError:
-                    continue  # Check stop event and loop again
-
-                # If Handshake message then use the handshake message handlers
-                if type(msg) in self.handshake_message_handlers:
-                    send_okay = SendOkay(self.connection, msg.message_id)  # type: ignore
-                    await self.handshake_message_handlers[type(msg)](
-                        msg, send_okay.run_async()
-                    )
-                    await send_okay.ensure_send_async(type(msg))
-                elif self.controller is not None:
-                    await self.controller.handle_message(msg, self.connection)  # type: ignore
-                else:
-                    logger.warning("No handler available for %s", msg.message_type)
-
-        except asyncio.CancelledError:
-            logger.info("Message receiver cancelled.")
-        except Exception as e:
-            logger.exception("Message processor encountered an error: %s", e)
-        finally:
-            self.stop()
+    async def process_message(self, message: S2Message):
+        # If Handshake message then use the handshake message handlers
+        if type(message) in self.handshake_message_handlers:
+            send_okay = SendOkay(self.connection, message.message_id)  # type: ignore
+            await self.handshake_message_handlers[type(message)](
+                message, send_okay.run_async()
+            )
+            await send_okay.ensure_send_async(type(message))
+        elif self.controller is not None:
+            await self.controller.handle_message(message, self.connection)  # type: ignore
+        else:
+            logger.warning("No handler available for %s", message.message_type)
 
     async def execute_test_suite(self):
         # Wait until the handshake is complete before starting the testing.
@@ -140,12 +117,8 @@ class IntegrationTestOrchestrator(AsyncTaskManager):
 
     async def connection_receive_messages(self):
         """Wrapping the receive messages method to allow catching of validation errors."""
-
-        if self.connection is None:
-            raise ValueError("Connection not set.")
-
         try:
-            await self.connection.receive_messages()
+            await super().connection_receive_messages()
         except S2ValidationError as e:
             if self.controller is not None:
                 self.controller.handle_s2_validation_exception(e)
@@ -255,29 +228,9 @@ class IntegrationTestOrchestrator(AsyncTaskManager):
         self._handshake_complete.set()
 
     async def setup(self, connection: BaseRMConnection, *args, **kwargs):
-        await super().setup()
-        self.connection = connection
+        await super().setup(connection)
 
         self._handshake_complete = asyncio.Event()
 
-        # Receives messages and puts them onto the queue.
-        self.create_task(self.connection_receive_messages(), True)
-        self.create_task(self.process_received_messages(), True)
         self.create_task(self.main_loop(), True)
 
-    async def cleanup(self, *args, **kwargs):
-        logger.info("Cleanup of Orchestrator")
-        await super().cleanup()
-
-        await self.connection.stop()
-
-    async def run(self, *args, **kwargs):
-        self.running = True
-
-        await self.setup(*args, **kwargs)
-
-        await self._stop_event.wait()
-
-        await self.cleanup(*args, **kwargs)
-
-        self.running = False
