@@ -1,17 +1,2 @@
-findings:
-- message_type: PowerForecast
-  parameters:
-  - name: PowerForecast Provided.
-    status: PASS
-  status: PASS
-- message_type: PowerMeasurement
-  parameters:
-  - name: PowerMeasurement Provided.
-    status: PASS
-  status: PASS
-- message_type: PEBCPowerConstraints
-  parameters:
-  - name: PEBCPowerConstraints Provided.
-    status: PASS
-  status: PASS
-timestamp: 2025-04-29 15:07:56.715961
+findings: []
+timestamp: 2025-04-29 16:01:38.595197

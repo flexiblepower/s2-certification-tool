@@ -81,6 +81,7 @@ class BaseRMConnection(abc.ABC):  # pylint: disable=too-many-instance-attributes
 
     async def _send_and_forget(self, s2_msg: S2Message) -> None:
         json_msg = s2_msg.to_json()
+        logger.info(json_msg)
         try:
             await self.send(json_msg)
         except websockets.ConnectionClosedError as e:

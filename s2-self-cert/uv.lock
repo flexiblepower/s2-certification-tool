@@ -190,7 +190,7 @@ wheels = [
 [[package]]
 name = "s2-python"
 version = "0.5.0"
-source = { editable = "../../s2-python" }
+source = { editable = "../s2-python" }
 dependencies = [
     { name = "click" },
     { name = "pydantic" },
@@ -235,7 +235,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "s2-python", editable = "../../s2-python" },
+    { name = "s2-python", editable = "../s2-python" },
     { name = "s2-testing", editable = "../s2-testing" },
 ]
 
@@ -254,7 +254,7 @@ dependencies = [
 requires-dist = [
     { name = "pydantic", specifier = ">=2.11.3" },
     { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "s2-python", editable = "../../s2-python" },
+    { name = "s2-python", editable = "../s2-python" },
     { name = "websockets", specifier = ">=13.1" },
 ]
 

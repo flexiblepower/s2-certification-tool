@@ -12,4 +12,4 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-s2-python = { path = "../../s2-python", editable = true }
+s2-python = { path = "../s2-python", editable = true }

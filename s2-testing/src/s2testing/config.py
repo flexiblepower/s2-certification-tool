@@ -48,7 +48,7 @@ class DeviceDetails(BaseModel):
 
 class Config(BaseModel):
     mode: Literal["testing", "certification"]
-    device_details: DeviceDetails
+    device_details: Optional[DeviceDetails]
     control_types: ControlTypeTestConfig
 
 

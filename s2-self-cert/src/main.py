@@ -9,20 +9,20 @@ import logging
 import logging.config
 from typing import Dict
 
+from s2python.common import ControlType as ProtocolControlType
 from s2testing.certificate.certificate import ComplianceReport
-from s2testing.config import Config, ControlTypeTestConfig, load_config
+from s2testing.config import Config, load_config
 from s2testing.controllers import (
     Controller,
     BaseController,
     PEBCController,
     FRBCController,
 )
-from log import LOGGING_CONFIG
-from orchestrator import IntegrationTestOrchestrator
-from s2python.common import ControlType as ProtocolControlType
-from server import S2Server
+from s2testing.orchestrator import IntegrationTestOrchestrator
 from s2testing.test_suite import PEBCTestCase, TestSuiteBuilder
 from s2testing.test_suite.frbc_test_cases import FRBCTestCase
+from log import LOGGING_CONFIG
+from server import S2Server
 
 logging.config.dictConfig(LOGGING_CONFIG)
 
@@ -32,7 +32,7 @@ parser = argparse.ArgumentParser(prog="S2 Self Cert")
 parser.add_argument("config")
 
 
-def create_controllers_dict(
+def create_controllers_dict_with_config(
     config: Config, report: ComplianceReport
 ) -> Dict[ProtocolControlType, Controller]:
     controllers: Dict[ProtocolControlType, Controller] = {}
@@ -59,7 +59,7 @@ async def main():
 
     report = ComplianceReport(timestamp=datetime.now())
 
-    controllers = create_controllers_dict(config, report)
+    controllers = create_controllers_dict_with_config(config, report)
 
     test_suite = (
         TestSuiteBuilder(config.control_types, report)
