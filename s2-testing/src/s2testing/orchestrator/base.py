@@ -34,6 +34,7 @@ class Orchestrator(AsyncTaskManager):
 
     @abc.abstractmethod
     async def process_message(self, message):
+        """Do something with the message that was popped off the connection's queue"""
         pass
 
     async def process_received_messages(self):
@@ -58,11 +59,7 @@ class Orchestrator(AsyncTaskManager):
         except Exception as e:
             logger.exception("Message processor encountered an error: %s", e)
         finally:
-            self.stop()
-
-    @abc.abstractmethod
-    async def main_loop(self):
-        pass
+            await self.stop()
 
     async def connection_receive_messages(self):
         """Wrapping the receive messages method to allow catching of validation errors."""
@@ -73,6 +70,11 @@ class Orchestrator(AsyncTaskManager):
         await self.connection.receive_messages()
 
     async def setup(self, connection: BaseConnection, *args, **kwargs):
+        """
+        Sets connection and start tasks:
+          1. Receive connection messages. WS receive messages and put on queue
+          2. Process received connection messages. Pop message from queue and do something with it.
+        """
         await super().setup()
         self.connection = connection
 

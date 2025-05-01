@@ -20,6 +20,7 @@ class AsyncTaskManager:
                         to be running.
 
     """
+
     _tasks = set()
 
     _stop_event: asyncio.Event
@@ -40,10 +41,10 @@ class AsyncTaskManager:
             await task
             if stop_on_complete:
                 logger.debug("Task execution complete. Stopping.")
-                self.stop()
+                await self.stop()
         except:
             logger.exception("Exception in task!")
-            self.stop()
+            await self.stop()
 
     def create_task(self, task: Coroutine, stop_on_complete=False):
         self._tasks.add(asyncio.create_task(self.task_wrapper(task, stop_on_complete)))
@@ -59,7 +60,7 @@ class AsyncTaskManager:
 
         self._tasks.clear()
 
-    def stop(self):
+    async def stop(self):
         self._stop_event.set()
 
     def is_running(self):

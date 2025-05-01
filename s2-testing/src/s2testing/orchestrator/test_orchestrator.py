@@ -198,7 +198,7 @@ class IntegrationTestOrchestrator(Orchestrator):
 
         if controller is None:
             logger.warning("No suitable control types available. Exiting...")
-            self.stop()
+            await self.stop()
             return
 
         logger.info("Selecting control type %s", controller)

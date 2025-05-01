@@ -1,17 +1,32 @@
 findings:
+- message_type: FRBCActuatorStatus
+  parameters:
+  - name: FRBCActuatorStatus Not Provided.
+    status: FAIL
+  status: FAIL
+- message_type: FRBCSystemDescription
+  parameters:
+  - name: FRBCSystemDescription Provided.
+    status: PASS
+  status: PASS
 - message_type: PowerForecast
   parameters:
-  - name: PowerForecast Provided.
-    status: PASS
-  status: PASS
+  - name: PowerForecast Not Provided.
+    status: FAIL
+  status: FAIL
 - message_type: PowerMeasurement
   parameters:
-  - name: PowerMeasurement Provided.
-    status: PASS
-  status: PASS
-- message_type: PEBCPowerConstraints
+  - name: PowerMeasurement Not Provided.
+    status: FAIL
+  status: FAIL
+- message_type: FRBCStorageStatus
   parameters:
-  - name: PEBCPowerConstraints Provided.
+  - name: FRBCStorageStatus Provided.
     status: PASS
   status: PASS
-timestamp: 2025-04-29 17:00:55.179552
+- message_type: FRBCUsageForecast
+  parameters:
+  - name: FRBCUsageForecast Provided.
+    status: PASS
+  status: PASS
+timestamp: 2025-04-30 11:38:24.250547

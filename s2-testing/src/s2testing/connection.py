@@ -7,11 +7,23 @@ import abc
 from typing import Type
 
 import websockets
+from websockets.asyncio.connection import Connection as WSConnection
+
 from s2python.common import ReceptionStatus, ReceptionStatusValues
 from s2python.message import S2Message
 from s2python.reception_status_awaiter import ReceptionStatusAwaiter
 from s2python.s2_parser import S2Parser
 from s2python.s2_validation_error import S2ValidationError
+from s2testing.server_models import (
+    MessageEnvelopeTypeEnum,
+    LogMessage,
+    ConfigControlMessage,
+    ControlMessage,
+    ControlMessageEnvelope,
+    LogMessageEnvelope,
+    S2MessageEnvelope,
+    ServerMessageEnvelope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +96,55 @@ class BaseConnection(abc.ABC):
     async def get_next_message(self):
         return await self.message_queue.get()
 
-    def stop(self):
+    async def stop(self):
         self._stop_event.set()
+
+
+class WebSocketConnectionMixin(BaseConnection):
+    # Queue contains strings.
+    ws: WSConnection
+
+    async def send(self, message):
+        if self.ws is None:
+            raise RuntimeError(
+                "Cannot send messages if websocket connection is not yet established."
+            )
+
+        await self.ws.send(message)
+
+    async def receive(self):
+        if self.ws is None:
+            raise RuntimeError(
+                "Cannot receive messages if websocket connection is not yet established."
+            )
+
+        return await self.ws.recv()
+
+    async def receive_messages(self):
+        if self.ws is None:
+            raise RuntimeError(
+                "Cannot receive messages if websocket connection is not yet established."
+            )
+        logger.debug("Connection has started to receive messages.")
+
+        try:
+            await super().receive_messages()
+        except websockets.ConnectionClosedOK:
+            logger.info("Connection closed normally by remote.")
+            self._handle_ws_close()
+        except websockets.ConnectionClosedError as e:
+            logger.error("Connection closed with error: %s", str(e))
+            self._handle_ws_close()
+        except asyncio.CancelledError:
+            pass
+
+    def _handle_ws_close(self):
+        self._stop_event.set()
+
+    async def stop(self):
+        await super().stop()
+
+        await self.ws.close()
 
 
 class BaseRMConnection(BaseConnection):  # pylint: disable=too-many-instance-attributes
@@ -220,3 +279,47 @@ class BaseRMConnection(BaseConnection):  # pylint: disable=too-many-instance-att
                 await self.reception_status_awaiter.receive_reception_status(s2_msg)
             else:
                 await self.message_queue.put(s2_msg)
+
+
+class WebSocketConnection(WebSocketConnectionMixin):
+
+    def __init__(self, ws) -> None:
+        super().__init__()
+        self.ws = ws
+
+
+class WebSocketRMConnection(WebSocketConnectionMixin, BaseRMConnection):
+
+    def __init__(self, ws) -> None:
+        super().__init__()
+        self.ws = ws
+
+
+class ServerConnection(WebSocketConnection):
+
+    async def send_s2_message(self, message: dict):
+        envelope = S2MessageEnvelope(message=message)
+        await self.send(envelope)
+
+    async def send_control_message(self, message: ControlMessage):
+        envelope = ControlMessageEnvelope(message=message)
+        await self.send(envelope)
+
+    async def send_log_message(self, message: LogMessage):
+        envelope = LogMessageEnvelope(message=message)
+        await self.send(envelope)
+
+    async def process_received_message(self, message):
+
+        message_dict = json.loads(message)
+
+        envelope: ServerMessageEnvelope
+        match message_dict["message_type"]:
+            case MessageEnvelopeTypeEnum.CONTROL:
+                envelope = ControlMessageEnvelope.model_validate(message_dict)
+            case MessageEnvelopeTypeEnum.S2:
+                envelope = S2MessageEnvelope.model_validate(message_dict)
+            case MessageEnvelopeTypeEnum.LOG:
+                envelope = LogMessageEnvelope.model_validate(message_dict)
+
+        await self.message_queue.put(envelope)

@@ -18,11 +18,12 @@ from s2testing.controllers import (
     PEBCController,
     FRBCController,
 )
-from s2testing.orchestrator import IntegrationTestOrchestrator
+from s2testing.orchestrator import IntegrationTestOrchestrator, Orchestrator
 from s2testing.test_suite import PEBCTestCase, TestSuiteBuilder
 from s2testing.test_suite.frbc_test_cases import FRBCTestCase
 from log import LOGGING_CONFIG
 from server import S2Server
+from server_side_certification_orchestrator import ServerSideCertificationOrchestrator
 
 logging.config.dictConfig(LOGGING_CONFIG)
 
@@ -48,15 +49,7 @@ def create_controllers_dict_with_config(
     return controllers
 
 
-async def main():
-
-    args = parser.parse_args()
-
-    config: Config = load_config(args.config)
-
-    logger.info("-" * 40)
-    logger.info(f"Starting in {config.mode} mode...")
-
+def create_local_test_orchestrator(config: Config) -> Orchestrator:
     report = ComplianceReport(timestamp=datetime.now())
 
     controllers = create_controllers_dict_with_config(config, report)
@@ -72,11 +65,35 @@ async def main():
         available_control_types=controllers, test_suite=test_suite, report=report
     )
 
-    s2_server = S2Server("0.0.0.0", 8000, orchestrator)
+    return orchestrator
+
+
+def create_server_certification_orchestrator(config: Config) -> Orchestrator:
+
+    return ServerSideCertificationOrchestrator()
+
+
+async def main():
+
+    args = parser.parse_args()
+
+    config: Config = load_config(args.config)
+
+    if config.mode == "certification":
+        orchestrator = create_server_certification_orchestrator(config)
+    elif config.mode == "testing":
+        orchestrator = create_local_test_orchestrator(config)
+    else:
+        raise ValueError("Invalid mode.")
+
+    logger.info("-" * 40)
+    logger.info(f"Starting in {config.mode} mode...")
+
+    s2_server = S2Server("0.0.0.0", 8000, orchestrator, config.mode)
 
     await s2_server.start()
 
-    report.export()
+    # report.export()
 
 
 if __name__ == "__main__":

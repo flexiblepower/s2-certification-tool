@@ -15,9 +15,11 @@ class MessageEnvelopeTypeEnum(str, Enum):
     S2 = "S2"
     LOG = "LOG"
 
+
 class ControlMessageType(str, Enum):
     CONFIG = "CONFIG"
     CERTIFICATE = "CERTIFICATE"
+
 
 class LogMessage(BaseModel):
     level: str
@@ -25,10 +27,12 @@ class LogMessage(BaseModel):
 
 
 class ConfigControlMessage(BaseModel):
-    message_type : ControlMessageType = ControlMessageType.CONFIG
-    config : Config
+    message_type: ControlMessageType = ControlMessageType.CONFIG
+    config: Config
+
 
 ControlMessage = Union[ConfigControlMessage]
+
 
 class ControlMessageEnvelope(BaseModel):
     message_type: MessageEnvelopeTypeEnum = MessageEnvelopeTypeEnum.CONTROL
@@ -46,4 +50,4 @@ class S2MessageEnvelope(BaseModel):
     message: dict
 
 
-ServerMessage = Union[ControlMessageEnvelope, LogMessageEnvelope, S2MessageEnvelope]
+ServerMessageEnvelope = Union[ControlMessageEnvelope, LogMessageEnvelope, S2MessageEnvelope]
