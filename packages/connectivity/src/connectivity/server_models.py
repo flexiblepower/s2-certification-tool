@@ -3,7 +3,7 @@ from typing import Union
 from pydantic import BaseModel
 
 from s2python.message import S2Message
-from s2testing.config import Config
+from testsuites.config import Config
 
 
 class ServerMessageValidationException(Exception):
@@ -47,7 +47,7 @@ class LogMessageEnvelope(BaseModel):
 class S2MessageEnvelope(BaseModel):
     message_type: MessageEnvelopeTypeEnum = MessageEnvelopeTypeEnum.S2
     # keep it as a dict so that the orchestrator can do the parsing and catch the errors as part of the testing.
-    message: dict
+    message: str
 
 
 ServerMessageEnvelope = Union[ControlMessageEnvelope, LogMessageEnvelope, S2MessageEnvelope]

@@ -2,16 +2,15 @@ import datetime
 import logging
 import uuid
 
-from s2testing.certificate.certificate import (
+from testsuites.certificate.certificate import (
     ComplianceFinding,
     ComplianceParameter,
     ComplianceReport,
     ComplianceStatus,
 )
-from s2testing.config import BaseTestConfig, PEBCTestConfig
-from s2testing.connection import BaseRMConnection
-from s2testing.controllers.controller import Controller
-from s2testing.controllers.pebc_controller import PEBCController
+from testsuites.config import BaseTestConfig, PEBCTestConfig
+from testsuites.controllers.controller import Controller
+from testsuites.controllers.pebc_controller import PEBCController
 from s2python.common import (
     ControlType as ProtocolControlType,
     PowerMeasurement,
@@ -23,8 +22,9 @@ from s2python.pebc import (
     PEBCPowerEnvelope,
     PEBCPowerEnvelopeElement,
 )
-from s2testing.test_suite.base_test_case import NoSelectionTestCase
-from s2testing.test_suite.test_suite import S2TestCase
+from testsuites.test_suite.base_test_case import NoSelectionTestCase
+from testsuites.test_suite.test_suite import S2TestCase
+from connectivity.s2_channel import S2Channel
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +37,11 @@ class PEBCTestCase(NoSelectionTestCase):
     def __init__(
         self,
         config: PEBCTestConfig,
-        connection: BaseRMConnection,
+        channel: S2Channel,
         controller: PEBCController,
         report: ComplianceReport,
     ):
-        super().__init__(config, connection, controller, report)
+        super().__init__(config, channel, controller, report)
 
     async def setup(self):
         await self.controller._power_constraints_received.wait()

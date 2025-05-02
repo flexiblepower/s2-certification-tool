@@ -4,7 +4,6 @@ from ..certificate.certificate import (
     ComplianceStatus,
 )
 from ..config import BaseTestConfig
-from ..connection import BaseRMConnection
 from ..controllers.controller import BaseController
 from ..test_suite.test_suite import S2TestCase
 
@@ -14,7 +13,7 @@ from s2python.common import (
     ControlType as ProtocolControlType,
     ResourceManagerDetails,
 )
-
+from connectivity.s2_channel import S2Channel
 
 class NoSelectionTestCase(S2TestCase):
 
@@ -28,11 +27,11 @@ class NoSelectionTestCase(S2TestCase):
     def __init__(
         self,
         config: BaseTestConfig,
-        connection: BaseRMConnection,
+        channel: S2Channel,
         controller: BaseController,
         report: ComplianceReport,
     ):
-        super().__init__(config, connection, controller, report)
+        super().__init__(config, channel, controller, report)
 
     async def test_validate_rm_details_received(self):
         finding = ComplianceFinding(message_type=ResourceManagerDetails)

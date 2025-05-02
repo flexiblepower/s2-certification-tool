@@ -11,7 +11,7 @@ from fastapi import FastAPI
 
 from .log import LOGGING_CONFIG
 from s2python.message import S2Message
-from s2testing.server_models import (
+from testsuites.server_models import (
     ConfigControlMessage,
     ControlMessageType,
     ServerMessageEnvelope,
@@ -21,10 +21,10 @@ from s2testing.server_models import (
     S2MessageEnvelope,
     ServerMessageValidationException,
 )
-from s2testing.orchestrator import ServerOrchestrator
-from s2testing.connection import ServerConnection
+from testsuites.orchestrator import ServerOrchestrator
+from testsuites.connection import ServerConnection
 from .rm_connection import ServerRMConnection
-from s2testing.config import Config
+from testsuites.config import Config
 
 
 logging.config.dictConfig(LOGGING_CONFIG)
@@ -42,7 +42,7 @@ def verify_certificate(file: UploadFile):
         return {"valid": False}
 
 
-class WebSocketWrapper:
+class WebSocketAdapter:
     def __init__(self, websocket: WebSocket):
         self.websocket = websocket
 
@@ -71,7 +71,7 @@ class CertificationServerOrchestrator(ServerOrchestrator):
 @app.websocket("/ws")
 async def connect_tester(websocket: WebSocket):
     await websocket.accept()
-    wrapper = WebSocketWrapper(websocket)
+    wrapper = WebSocketAdapter(websocket)
     server = CertificationServerOrchestrator()
     client_connection = ServerConnection(wrapper)
     # client_connection = StarlettWebsocketServerConnection(websocket)

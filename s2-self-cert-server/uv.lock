@@ -57,6 +57,25 @@ wheels = [
 ]
 
 [[package]]
+name = "connectivity"
+version = "0.1.0"
+source = { editable = "../packages/connectivity" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "s2-python" },
+    { name = "websockets" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.11.3" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "s2-python", editable = "../packages/s2-python" },
+    { name = "websockets", specifier = ">=13.1" },
+]
+
+[[package]]
 name = "dnspython"
 version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -555,17 +574,17 @@ name = "s2-server"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "connectivity" },
     { name = "fastapi", extra = ["standard"] },
     { name = "python-multipart" },
-    { name = "s2-python" },
     { name = "test-suites" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "connectivity", editable = "../packages/connectivity" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.12" },
     { name = "python-multipart", specifier = ">=0.0.20" },
-    { name = "s2-python", editable = "../packages/s2-python" },
     { name = "test-suites", editable = "../packages/test-suites" },
 ]
 

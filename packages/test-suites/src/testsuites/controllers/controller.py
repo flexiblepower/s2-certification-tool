@@ -1,8 +1,7 @@
 import asyncio
-from email import message
 from typing import Awaitable, Callable, Optional, Type
-from ..connection import BaseRMConnection
-from s2testing.message_handlers import MessageHandler
+import uuid
+from testsuites.message_handlers import MessageHandler
 from s2python.common import (
     ControlType as ProtocolControlType,
     PowerForecast,
@@ -10,8 +9,17 @@ from s2python.common import (
     ResourceManagerDetails,
 )
 from s2python.message import S2Message
+from s2python.common import (
+    Handshake,
+    HandshakeResponse,
+    SelectControlType,
+    EnergyManagementRole,
+)
 from s2python.s2_validation_error import S2ValidationError
+from connectivity.s2_channel import S2Channel, SendOkay
 
+from testsuites.util import wait_for_event_or_stop
+from s2python.version import S2_VERSION
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,22 +28,25 @@ logger = logging.getLogger(__name__)
 class Controller(MessageHandler):
     control_type: ProtocolControlType
 
+    role: EnergyManagementRole = EnergyManagementRole.CEM
+
     resource_manager_details: Optional[ResourceManagerDetails] = None
+
+    _resource_manager_details_received: asyncio.Event
 
     messages_received = []
 
     def __init__(self):
         super().__init__()
 
-    def handle_message(
-        self,
-        message: S2Message,
-        connection: "BaseRMConnection",
-        *args,
-        **kwargs
-    ):
+        self._resource_manager_details_received = asyncio.Event()
+
+        self.add_handler(Handshake, self.handle_handshake)
+        self.add_handler(ResourceManagerDetails, self.handle_rm_details)
+
+    def handle_message(self, message: S2Message, channel: "S2Channel"):
         try:
-            result = super().handle_message(message, connection, *args, **kwargs)
+            result = super().handle_message(message, channel)
         except:
             raise
         finally:
@@ -48,7 +59,6 @@ class Controller(MessageHandler):
 
     def get_received_messages(self, message_type: Type[S2Message]) -> list:
         def filter_messages(m: S2Message):
-            logger.info("Filter: %s, %s", type(m), message_type)
             return type(m) == message_type
 
         result = list(filter(filter_messages, self.messages_received))
@@ -64,15 +74,70 @@ class Controller(MessageHandler):
         # and receives a valid status response, then this method is called.
         pass
 
+    async def perform_handshake(self, channel: S2Channel):
+        if channel is None:
+            raise ValueError("Channel not set.")
+
+        await channel.send_msg_and_await_reception_status(
+            Handshake(
+                message_id=uuid.uuid4(),  # type: ignore
+                role=self.role,
+                supported_protocol_versions=[S2_VERSION],
+            )
+        )
+
+        # if not await wait_for_event_or_stop(self._handshake_complete, stop_event):
+        #     return
+
+    async def handle_handshake(
+        self,
+        message: Handshake,
+        channel: "S2Channel",
+        send_okay: Awaitable[None],
+    ) -> None:
+
+        if channel is None:
+            raise ValueError("Channel not set.")
+
+        logger.debug(
+            "%s supports S2 protocol versions: %s",
+            message.role,
+            message.supported_protocol_versions,
+        )
+        if message.supported_protocol_versions is None:
+            raise ValueError(
+                "Missing supported protocol versions in handshake message."
+            )
+
+        await send_okay
+
+        await channel.send_msg_and_await_reception_status(
+            HandshakeResponse(
+                message_id=uuid.uuid4(),
+                selected_protocol_version=message.supported_protocol_versions[0],
+            )
+        )
+
+    async def select_control_type(self, channel: "S2Channel"):
+        await channel.send_msg_and_await_reception_status(
+            # The controller is updated in executor before sending the selection. So we just use the current instance's type.
+            SelectControlType(message_id=uuid.uuid4(), control_type=self.control_type)
+        )
+
     async def handle_rm_details(
         self,
         message: ResourceManagerDetails,
-        connection: "BaseRMConnection",
+        channel: "S2Channel",
         send_okay: Awaitable,
     ):
         self.resource_manager_details = message
 
         await send_okay
+
+        self._resource_manager_details_received.set()
+    
+    async def wait_until_rm_details_received(self):
+        await self._resource_manager_details_received.wait()
 
 
 class BaseController(Controller):
@@ -87,7 +152,7 @@ class BaseController(Controller):
     async def handle_power_measurement_message(
         self,
         message: PowerMeasurement,
-        connection: "BaseRMConnection",
+        channel: "S2Channel",
         send_okay: Awaitable,
     ):
 
@@ -96,7 +161,7 @@ class BaseController(Controller):
     async def handle_power_forecast_message(
         self,
         message: PowerForecast,
-        connection: "BaseRMConnection",
+        channel: "S2Channel",
         send_okay: Awaitable,
     ):
 

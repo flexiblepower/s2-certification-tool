@@ -5,8 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 
-dependencies = ["s2-python", "test-suites"]
+dependencies = ["connectivity", "test-suites"]
 
 [tool.uv.sources]
 test-suites = { path = "../packages/test-suites", editable = true }
-s2-python = { path = "../packages/s2-python", editable = true }
+connectivity = { path = "../packages/connectivity", editable = true }

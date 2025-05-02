@@ -61,6 +61,7 @@ class AsyncTaskManager:
         self._tasks.clear()
 
     async def stop(self):
+        logger.debug("Stop Called in class %s", self.__class__.__name__)
         self._stop_event.set()
 
     def is_running(self):

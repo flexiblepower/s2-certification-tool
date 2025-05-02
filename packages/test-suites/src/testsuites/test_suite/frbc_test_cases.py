@@ -3,15 +3,14 @@ import json
 import logging
 import uuid
 
-from s2testing.certificate.certificate import (
+from testsuites.certificate.certificate import (
     ComplianceFinding,
     ComplianceParameter,
     ComplianceReport,
     ComplianceStatus,
 )
-from s2testing.config import FRBCTestConfig, PEBCTestConfig
-from s2testing.connection import BaseRMConnection
-from s2testing.controllers.frbc_controller import FRBCController
+from testsuites.config import FRBCTestConfig, PEBCTestConfig
+from testsuites.controllers.frbc_controller import FRBCController
 from s2python.common import PowerMeasurement, ControlType as ProtocolControlType
 from s2python.frbc import (
     FRBCActuatorStatus,
@@ -20,8 +19,9 @@ from s2python.frbc import (
     FRBCSystemDescription,
     FRBCUsageForecast,
 )
-from s2testing.test_suite.base_test_case import NoSelectionTestCase
-from s2testing.test_suite.test_suite import S2TestCase
+from testsuites.test_suite.base_test_case import NoSelectionTestCase
+from testsuites.test_suite.test_suite import S2TestCase
+from connectivity.s2_channel import S2Channel
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +37,11 @@ class FRBCTestCase(NoSelectionTestCase):
     def __init__(
         self,
         config: FRBCTestConfig,
-        connection: BaseRMConnection,
+        channel: S2Channel,
         controller: FRBCController,
         report: ComplianceReport,
     ):
-        super().__init__(config, connection, controller, report)
+        super().__init__(config, channel, controller, report)
 
     async def setup(self):
         await self.controller._system_description_received.wait()

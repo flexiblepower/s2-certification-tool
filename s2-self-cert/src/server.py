@@ -3,21 +3,19 @@ import logging
 import signal
 from typing import Literal
 
-from s2testing.orchestrator import IntegrationTestOrchestrator
+from testsuites.test_executor import IntegrationTestExecutor
 from websockets.asyncio.connection import Connection as WSConnection
 from websockets.asyncio.server import serve as ws_serve
-from s2testing.connection import (
-    BaseConnection,
-    WebSocketConnection,
-    WebSocketRMConnection,
-)
+from ws_adapter import WebSocketConnectionAdapter
+from connectivity.channel import Channel
+from connectivity.s2_channel import S2Channel
 
 logger = logging.getLogger(__name__)
 
 
 class S2Server:
     # Receives incoming S2 Resource Manager WebSocket Connections
-    orchestrator: IntegrationTestOrchestrator
+    executor: IntegrationTestExecutor
     mode: Literal["testing", "certification"]
 
     _exit_event: asyncio.Event
@@ -26,7 +24,7 @@ class S2Server:
         self,
         host,
         port,
-        orchestrator: IntegrationTestOrchestrator,
+        orchestrator: IntegrationTestExecutor,
         mode: Literal["testing", "certification"],
     ):
         self._host = host
@@ -35,7 +33,7 @@ class S2Server:
 
         self.mode = mode
 
-        self.orchestrator = orchestrator
+        self.executor = orchestrator
 
     async def handle_incoming_connection(self, websocket: WSConnection):
         """
@@ -43,14 +41,13 @@ class S2Server:
         If the orchestrator already has a connection then it discards the new connection.
         This system is only meant to handle one connected device.
         """
-        if not self.orchestrator.is_running():
+        if not self.executor.is_running():
             logger.info("Connection to RM opened.")
-            connection: BaseConnection
-            if self.mode == "testing":
-                connection = WebSocketRMConnection(websocket)
-            elif self.mode == "certification":
-                connection = WebSocketConnection(websocket)
-            await self.orchestrator.run(connection)
+            connection = WebSocketConnectionAdapter(websocket)
+
+            s2_channel = S2Channel(connection)
+
+            await self.executor.run(s2_channel)
 
             logger.info("Connection closed.")
 
@@ -77,5 +74,5 @@ class S2Server:
             await self._exit_event.wait()
             logger.info(f"Server stopping.")
 
-        await self.orchestrator.stop()
+        await self.executor.stop()
         logger.info(f"Server stop.")

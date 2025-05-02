@@ -10,7 +10,7 @@ from s2python.pebc import (
     PEBCPowerConstraints,
 )
 from .controller import BaseController
-from ..connection import BaseRMConnection
+from connectivity.s2_channel import S2Channel
 
 import logging
 
@@ -36,7 +36,7 @@ class PEBCController(BaseController):
     async def handle_power_constraints_message(
         self,
         message: PEBCPowerConstraints,
-        connection: "BaseRMConnection",
+        channel: "S2Channel",
         send_okay: Awaitable,
     ):
         logger.info("Received power constraints.")
@@ -48,7 +48,7 @@ class PEBCController(BaseController):
     async def handle_energy_constraints_message(
         self,
         message: PEBCEnergyConstraint,
-        connection: "BaseRMConnection",
+        connection: "S2Channel",
         send_okay: Awaitable,
     ):
         await send_okay
@@ -56,7 +56,7 @@ class PEBCController(BaseController):
     async def handle_instruction_status_update(
         self,
         message: InstructionStatusUpdate,
-        connection: "BaseRMConnection",
+        connection: "S2Channel",
         send_okay: Awaitable,
     ):
         await send_okay

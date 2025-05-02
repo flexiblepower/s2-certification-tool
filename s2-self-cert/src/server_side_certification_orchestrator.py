@@ -6,7 +6,7 @@ import uuid
 from types import CoroutineType
 from typing import Awaitable, Callable, Coroutine, Dict, Optional, Type
 
-from s2testing.certificate.certificate import ComplianceReport
+from testsuites.certificate.certificate import ComplianceReport
 from s2python.common import ControlType as ProtocolControlType
 from s2python.common import (
     EnergyManagementRole,
@@ -20,14 +20,11 @@ from s2python.s2_validation_error import S2ValidationError
 from s2python.version import S2_VERSION
 
 
-from s2testing.connection import BaseConnection, ServerConnection
-from s2testing.async_task_manager import AsyncTaskManager
-from s2testing.orchestrator import Orchestrator, ServerOrchestrator
-from s2testing.connection import SendOkay
-from s2testing.controllers import Controller
-from s2testing.test_suite.test_suite import TestSuite
-from s2testing.util import wait_for_event_or_stop
-from s2testing.server_models import (
+from connectivity.async_task_manager import AsyncTaskManager
+from testsuites.controllers import Controller
+from testsuites.test_suite.test_suite import TestSuite
+from testsuites.util import wait_for_event_or_stop
+from connectivity.server_models import (
     ServerMessageEnvelope,
     MessageEnvelopeTypeEnum,
     ControlMessage,
@@ -42,29 +39,29 @@ SERVER_PORT = os.environ.get("CERTIFICATION_SERVER_PORT", "8001")
 SERVER_PATH = os.environ.get("CERTIFICATION_SERVER_PORT", "/ws")
 
 
-class ServerSideCertificationOrchestrator(ServerOrchestrator):
+# class ServerSideCertificationOrchestrator(ServerOrchestrator):
 
-    async def handle_control_message(message: ControlMessage):
-        logger.info("Control Message: %s", message)
+#     async def handle_control_message(message: ControlMessage):
+#         logger.info("Control Message: %s", message)
 
-    async def main_loop(self):
-        pass
+#     async def main_loop(self):
+#         pass
 
-    async def connect_to_server(self) -> ServerConnection:
-        uri = f"{SERVER_PROTOCOL}://{SERVER_HOST}:{SERVER_PORT}{SERVER_PATH}"
-        logger.info(f"Connecting to server ({uri})...")
+#     async def connect_to_server(self) -> ServerConnection:
+#         uri = f"{SERVER_PROTOCOL}://{SERVER_HOST}:{SERVER_PORT}{SERVER_PATH}"
+#         logger.info(f"Connecting to server ({uri})...")
 
-        ws = await connect(uri)
+#         ws = await connect(uri)
 
-        server_connection = ServerConnection(ws)
+#         server_connection = ServerConnection(ws)
 
-        logger.info("Connected to server.")
+#         logger.info("Connected to server.")
 
-        return server_connection
+#         return server_connection
 
-    async def setup(self, connection: BaseConnection, *args, **kwargs):
-        server_connection = await self.connect_to_server()
+#     async def setup(self, connection: BaseConnection, *args, **kwargs):
+#         server_connection = await self.connect_to_server()
 
-        await super().setup(connection, server_connection)
+#         await super().setup(connection, server_connection)
 
-        logger.info("setup complete")
+#         logger.info("setup complete")

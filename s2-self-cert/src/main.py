@@ -10,20 +10,21 @@ import logging.config
 from typing import Dict
 
 from s2python.common import ControlType as ProtocolControlType
-from s2testing.certificate.certificate import ComplianceReport
-from s2testing.config import Config, load_config
-from s2testing.controllers import (
+from testsuites.certificate.certificate import ComplianceReport
+from testsuites.config import Config, load_config
+from testsuites.controllers import (
     Controller,
     BaseController,
     PEBCController,
     FRBCController,
 )
-from s2testing.orchestrator import IntegrationTestOrchestrator, Orchestrator
-from s2testing.test_suite import PEBCTestCase, TestSuiteBuilder
-from s2testing.test_suite.frbc_test_cases import FRBCTestCase
+from testsuites.test_executor import IntegrationTestExecutor
+from testsuites.test_suite import PEBCTestCase, TestSuiteBuilder
+from testsuites.test_suite.frbc_test_cases import FRBCTestCase
 from log import LOGGING_CONFIG
 from server import S2Server
-from server_side_certification_orchestrator import ServerSideCertificationOrchestrator
+
+# from server_side_certification_orchestrator import ServerSideCertificationOrchestrator
 
 logging.config.dictConfig(LOGGING_CONFIG)
 
@@ -49,7 +50,7 @@ def create_controllers_dict_with_config(
     return controllers
 
 
-def create_local_test_orchestrator(config: Config) -> Orchestrator:
+def create_local_test_orchestrator(config: Config) -> IntegrationTestExecutor:
     report = ComplianceReport(timestamp=datetime.now())
 
     controllers = create_controllers_dict_with_config(config, report)
@@ -61,16 +62,16 @@ def create_local_test_orchestrator(config: Config) -> Orchestrator:
         .build()
     )
 
-    orchestrator = IntegrationTestOrchestrator(
+    orchestrator = IntegrationTestExecutor(
         available_control_types=controllers, test_suite=test_suite, report=report
     )
 
     return orchestrator
 
 
-def create_server_certification_orchestrator(config: Config) -> Orchestrator:
+# def create_server_certification_orchestrator(config: Config) -> IntegrationTestExecutor:
 
-    return ServerSideCertificationOrchestrator()
+#     return ServerSideCertificationOrchestrator()
 
 
 async def main():
@@ -80,16 +81,17 @@ async def main():
     config: Config = load_config(args.config)
 
     if config.mode == "certification":
-        orchestrator = create_server_certification_orchestrator(config)
+        pass
+        # orchestrator = create_server_certification_orchestrator(config)
     elif config.mode == "testing":
-        orchestrator = create_local_test_orchestrator(config)
+        test_executor = create_local_test_orchestrator(config)
     else:
         raise ValueError("Invalid mode.")
 
     logger.info("-" * 40)
     logger.info(f"Starting in {config.mode} mode...")
 
-    s2_server = S2Server("0.0.0.0", 8000, orchestrator, config.mode)
+    s2_server = S2Server("0.0.0.0", 8000, test_executor, config.mode)
 
     await s2_server.start()
 

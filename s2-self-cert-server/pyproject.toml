@@ -7,11 +7,11 @@ requires-python = ">=3.10"
 dependencies = [
     "fastapi[standard]>=0.115.12",
     "python-multipart>=0.0.20",
-    "s2-python",
+    "connectivity",
     "test-suites",
 ]
 
 
 [tool.uv.sources]
 test-suites = { path = "../packages/test-suites", editable = true }
-s2-python = { path = "../packages/s2-python", editable = true }
+connectivity = { path = "../packages/connectivity", editable = true }

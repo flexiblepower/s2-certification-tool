@@ -1,15 +1,9 @@
 import asyncio
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type
+from typing import Callable, Dict, Optional, Tuple, Type
 
-from s2python.common import ControlType as ProtocolControlType
-from s2python.common import EnergyManagementRole, ResourceManagerDetails
+from s2python.common import EnergyManagementRole
 from s2python.message import S2Message
-from s2python.s2_connection import SendOkay
-
-if TYPE_CHECKING:
-    from connection import Connection
-
+from connectivity.s2_channel import SendOkay, S2Channel
 import logging
 
 logger = logging.getLogger(__name__)
@@ -97,18 +91,14 @@ class MessageHandler:
     def add_handler(self, msg_type: Type[S2Message], handler: Callable):
         self.handlers[msg_type] = handler
 
-    async def handle_message(
-        self, message: S2Message, connection: "Connection", *args, **kwargs
-    ):
+    async def handle_message(self, message: S2Message, channel: "S2Channel"):
         try:
 
             handler = self.handlers[type(message)]
 
-            send_okay = SendOkay(connection, message.message_id)  # type: ignore[attr-defined, union-attr]
+            send_okay = SendOkay(channel, message.message_id)  # type: ignore[attr-defined, union-attr]
 
-            result = await handler(
-                message, connection, send_okay.run_async(), *args, **kwargs
-            )
+            result = await handler(message, channel, send_okay.run_async())
 
             await send_okay.ensure_send_async(type(message))
 
@@ -116,12 +106,12 @@ class MessageHandler:
 
         except KeyError:
             if self._accept_unhandled_messages:
-                send_okay = SendOkay(connection, message.message_id)  # type: ignore[attr-defined, union-attr]
+                send_okay = SendOkay(channel, message.message_id)  # type: ignore[attr-defined, union-attr]
 
                 await send_okay.run_async()
             else:
                 raise MessageHandlerNotFoundError(
-                    f"Command does not exist for message type '{ message.message_type}'"
+                    f"Command does not exist for message type '{ message.message_type }'"
                 )
         finally:
             self.message_awaiter.receive_message(message)
