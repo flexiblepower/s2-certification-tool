@@ -516,7 +516,7 @@ wheels = [
 [[package]]
 name = "s2-python"
 version = "0.5.0"
-source = { editable = "../s2-python" }
+source = { editable = "../packages/s2-python" }
 dependencies = [
     { name = "click" },
     { name = "pydantic" },
@@ -558,34 +558,15 @@ dependencies = [
     { name = "fastapi", extra = ["standard"] },
     { name = "python-multipart" },
     { name = "s2-python" },
-    { name = "s2-testing" },
+    { name = "test-suites" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.12" },
     { name = "python-multipart", specifier = ">=0.0.20" },
-    { name = "s2-python", editable = "../s2-python" },
-    { name = "s2-testing", editable = "../s2-testing" },
-]
-
-[[package]]
-name = "s2-testing"
-version = "0.1.0"
-source = { editable = "../s2-testing" }
-dependencies = [
-    { name = "pydantic" },
-    { name = "pyyaml" },
-    { name = "s2-python" },
-    { name = "websockets" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = ">=2.11.3" },
-    { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "s2-python", editable = "../s2-python" },
-    { name = "websockets", specifier = ">=13.1" },
+    { name = "s2-python", editable = "../packages/s2-python" },
+    { name = "test-suites", editable = "../packages/test-suites" },
 ]
 
 [[package]]
@@ -616,6 +597,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ce/20/08dfcd9c983f6a6f4a1000d934b9e6d626cff8d2eeb77a89a68eef20a2b7/starlette-0.46.2.tar.gz", hash = "sha256:7f7361f34eed179294600af672f565727419830b54b7b084efe44bb82d2fccd5", size = 2580846, upload_time = "2025-04-13T13:56:17.942Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8b/0c/9d30a4ebeb6db2b25a841afbb80f6ef9a854fc3b41be131d249a977b4959/starlette-0.46.2-py3-none-any.whl", hash = "sha256:595633ce89f8ffa71a015caed34a5b2dc1c0cdb3f0f1fbd1e69339cf2abeec35", size = 72037, upload_time = "2025-04-13T13:56:16.21Z" },
+]
+
+[[package]]
+name = "test-suites"
+version = "0.1.0"
+source = { editable = "../packages/test-suites" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "s2-python" },
+    { name = "websockets" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.11.3" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "s2-python", editable = "../packages/s2-python" },
+    { name = "websockets", specifier = ">=13.1" },
 ]
 
 [[package]]
