@@ -26,10 +26,34 @@ from testsuites.test_suite.test_suite import TestSuite
 from testsuites.util import wait_for_event_or_stop
 from connectivity.server_models import (
     ServerMessageEnvelope,
+    S2MessageEnvelope,
+    ControlMessageEnvelope,
+    LogMessageEnvelope,
     MessageEnvelopeTypeEnum,
     ControlMessage,
 )
 from websockets.asyncio.client import connect
+from connectivity.channel import Channel, ServerWebsocketConnectionChannel
+from testsuites.certification_executor import AbstractCertificationExecutor
+from connectivity.s2_channel import S2Channel
+from connectivity.config import Config
+from connectivity.connection_adapter import ConnectionAdapter
+from ws_adapter import WebSocketConnectionAdapter
+
+
+from connectivity.server_models import (
+    ServerMessageEnvelope,
+    S2MessageEnvelope,
+    LogMessage,
+    LogMessageEnvelope,
+    ControlMessage,
+    ConfigControlMessage,
+    ControlMessageEnvelope,
+    ControlMessageType,
+    MessageEnvelopeTypeEnum,
+    BaseEnvelope,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +61,40 @@ SERVER_PROTOCOL = os.environ.get("CERTIFICATION_SERVER_PROTOCOL", "ws")
 SERVER_HOST = os.environ.get("CERTIFICATION_SERVER_HOST", "localhost")
 SERVER_PORT = os.environ.get("CERTIFICATION_SERVER_PORT", "8001")
 SERVER_PATH = os.environ.get("CERTIFICATION_SERVER_PORT", "/ws")
+
+
+class CertificationTestExecutor(AbstractCertificationExecutor):
+    config: Config
+
+    def __init__(self, config: Config):
+        super().__init__()
+
+        self.config = config
+
+    async def connect_to_server(self) -> Channel[ServerMessageEnvelope, str]:
+        uri = f"{SERVER_PROTOCOL}://{SERVER_HOST}:{SERVER_PORT}{SERVER_PATH}"
+        logger.info(f"Connecting to server ({uri})...")
+
+        ws = await connect(uri)
+
+        connection = WebSocketConnectionAdapter(ws)
+        channel = ServerWebsocketConnectionChannel(connection)
+
+        logger.info("Connected to server.")
+
+        return channel
+
+    async def main_loop(self):
+
+        await self.send_server_control_message(ConfigControlMessage(config=self.config))
+        
+        logger.info("Config sent.")
+
+    async def setup(self, s2_channel: Channel[str, str], *args, **kwargs):
+
+        server_channel = await self.connect_to_server()
+
+        await super().setup(s2_channel, server_channel)
 
 
 # class ServerSideCertificationOrchestrator(ServerOrchestrator):

@@ -1,6 +1,15 @@
+import abc
 import asyncio
 
+import json
 import logging
+from typing import Generic, TypeVar
+
+from connectivity.server_models import (
+    MessageEnvelopeTypeEnum,
+    ServerMessageEnvelope,
+    parse_envelope,
+)
 
 from .connection_adapter import (
     ConnectionAdapter,
@@ -17,30 +26,33 @@ class ChannelSendError:
     pass
 
 
-class Channel:
-    connection: ConnectionAdapter
-    message_queue: asyncio.Queue
+T = TypeVar("T")
+RawT = TypeVar("RawT")
+
+
+class Channel(Generic[T, RawT], abc.ABC):
+    connection: ConnectionAdapter[RawT]
+    message_queue: asyncio.Queue[T]
     _stop_event: asyncio.Event
 
-    def __init__(self, connection: ConnectionAdapter) -> None:
+    def __init__(self, connection: ConnectionAdapter[RawT]) -> None:
         self.connection = connection
 
         self._stop_event = asyncio.Event()
 
         self.message_queue = asyncio.Queue()
 
-    async def get_next_message(self) -> str:
-        """Pops the next message off the queue to be processed."""
+    async def get_next_message(self) -> T:
         return await self.message_queue.get()
 
-    async def send(self, message: str):
-        return await self.connection.send(message)
+    async def send(self, message: T):
+        return await self.connection.send(message)  # type: ignore
 
-    async def receive(self) -> str:
+    async def receive(self) -> RawT:
         return await self.connection.receive()
 
-    async def process_received_message(self, message: str):
-        await self.message_queue.put(message)
+    async def process_received_message(self, message: RawT):
+        await self.message_queue.put(message)  # type: ignore
 
     async def receive_messages(self):
         logger.debug("WebSocket Channel has started to receive messages.")
@@ -70,3 +82,20 @@ class Channel:
 
         if await self.connection.open:
             await self.connection.close()
+
+
+class BaseChannel(Channel[str, str]):
+    """A str, str channel."""
+
+
+class ServerWebsocketConnectionChannel(Channel[ServerMessageEnvelope, str]):
+    async def send(self, message: ServerMessageEnvelope):
+        str_msg: str = message.model_dump_json()
+
+        return await self.connection.send(str_msg)
+
+    async def process_received_message(self, str_msg: str):
+
+        message = parse_envelope(str_msg)
+
+        await self.message_queue.put(message)

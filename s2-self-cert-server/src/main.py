@@ -1,30 +1,36 @@
+from fastapi import FastAPI
 import asyncio
 from enum import Enum
 import json
 import logging
 import logging.config
-from typing import Callable, Dict, Optional
+from connectivity.connection_adapter import ConnectionAdapter
 from fastapi import UploadFile, WebSocket
 from fastapi import WebSocketDisconnect
+from testsuites.certification_executor import AbstractCertificationExecutor
+from connectivity.config import Config
+from connectivity.channel import ServerWebsocketConnectionChannel
+from connectivity.s2_channel import S2Channel
+from testsuites.test_executor import IntegrationTestExecutor, create_test_executor
 
-from fastapi import FastAPI
+
+from connectivity.server_models import (
+    ServerMessageEnvelope,
+    S2MessageEnvelope,
+    LogMessage,
+    LogMessageEnvelope,
+    ControlMessage,
+    ConfigControlMessage,
+    ControlMessageEnvelope,
+    ControlMessageType,
+    MessageEnvelopeTypeEnum,
+    BaseEnvelope,
+)
+from connectivity.channel import Channel
+
 
 from .log import LOGGING_CONFIG
-from s2python.message import S2Message
-from testsuites.server_models import (
-    ConfigControlMessage,
-    ControlMessageType,
-    ServerMessageEnvelope,
-    ControlMessage,
-    ControlMessageEnvelope,
-    MessageEnvelopeTypeEnum,
-    S2MessageEnvelope,
-    ServerMessageValidationException,
-)
-from testsuites.orchestrator import ServerOrchestrator
-from testsuites.connection import ServerConnection
-from .rm_connection import ServerRMConnection
-from testsuites.config import Config
+from .ws_adapter import FastAPIWebSocketAdapter
 
 
 logging.config.dictConfig(LOGGING_CONFIG)
@@ -42,41 +48,119 @@ def verify_certificate(file: UploadFile):
         return {"valid": False}
 
 
-class WebSocketAdapter:
-    def __init__(self, websocket: WebSocket):
-        self.websocket = websocket
+class MockConnectionAdapter(ConnectionAdapter):
+
+    incoming_queue: asyncio.Queue
+    outgoing_queue: asyncio.Queue
+
+    def __init__(self) -> None:
+        self.incoming_queue = asyncio.Queue()
+        self.outgoing_queue = asyncio.Queue()
+
+    async def receive(self) -> str:
+        return await self.incoming_queue.get()
 
     async def send(self, message: str):
-        await self.websocket.send_text(message)
+        return await self.outgoing_queue.put(message)
 
-    async def recv(self):
-        try:
-            msg = await self.websocket.receive_text()
-            return msg
-        except WebSocketDisconnect:
-            logger.exception("WebSocket disconnected.")
-            return None
+    async def get_next_outgoing(self) -> str:
+        return await self.outgoing_queue.get()
+
+    async def put_incoming(self, message: str):
+        return await self.incoming_queue.put(message)
+
+    @property
+    async def open(self) -> bool:
+        return True
+
+    async def close(self, *args, **kwargs):
+        pass
 
 
-class CertificationServerOrchestrator(ServerOrchestrator):
-    connection: ServerRMConnection
+class MockChannel(Channel[str, str]):
+    connection: MockConnectionAdapter
 
-    async def handle_control_message(message):
-        logger.info("Control Message: %s", message)
+    async def send(self, message: str):
+        logger.info("S2 Message: %s", message)
+        await self.connection.put_incoming(message)
+
+    async def receive(self) -> str:
+        return await self.connection.get_next_outgoing()
+
+
+from testsuites.certificate.certificate import ComplianceReport
+
+
+class ServerSideCertificationExecutor(AbstractCertificationExecutor):
+    s2_connection_adapter: ConnectionAdapter
+    config: Config
+
+    _config_received: asyncio.Event
+
+    test_executor: IntegrationTestExecutor
+
+    report: ComplianceReport
+
+    def __init__(self):
+        super().__init__()
+
+        self.add_handler(ConfigControlMessage, self.handle_config_message)
+
+    async def handle_config_message(self, message: ConfigControlMessage):
+        self.config = message.config
+
+        self._config_received.set()
+
+    async def handle_control_message(self, message: ControlMessage):
+        logger.debug("Control Message: %s", message)
+        await self.handle_message(message)
 
     async def main_loop(self):
-        pass
+
+        await self._config_received.wait()
+
+        logger.debug("Config Received.")
+
+        self.report = ComplianceReport()
+
+        self.test_executor = create_test_executor(self.config)
+
+        s2_channel = S2Channel(self.s2_connection_adapter)
+
+        try:
+            await self.test_executor.run(s2_channel)
+        except:
+            logger.exception("Error in test executor.")
+
+        logger.info("Test suite complete!")
+
+        report = self.test_executor.report
+
+        logger.info("Report: %s", report)
+        await asyncio.sleep(10)
+        logger.info("Main Loop Complete.")
+
+    async def setup(
+        self, server_channel: Channel[ServerMessageEnvelope, str], *args, **kwargs
+    ):
+        self._config_received = asyncio.Event()
+
+        self.s2_connection_adapter = MockConnectionAdapter()
+        s2_channel_mock = MockChannel(self.s2_connection_adapter)
+
+        return await super().setup(s2_channel_mock, server_channel, *args, **kwargs)
 
 
 @app.websocket("/ws")
 async def connect_tester(websocket: WebSocket):
     await websocket.accept()
-    wrapper = WebSocketAdapter(websocket)
-    server = CertificationServerOrchestrator()
-    client_connection = ServerConnection(wrapper)
-    # client_connection = StarlettWebsocketServerConnection(websocket)
-    connection = ServerRMConnection(client_connection)
+    # The wrapper around the FastAPI websocket for consistency and reusability
+    connection = FastAPIWebSocketAdapter(websocket)
 
-    await server.run(connection, client_connection)
+    # The communication channel used to send and receive messages to the client via the above connection.
+    server_channel = ServerWebsocketConnectionChannel(connection)
 
-    # await websocket.close()
+    # The central part! This is what coordinated the execution and the test suit and certification.
+    executor = ServerSideCertificationExecutor()
+
+    await executor.run(server_channel)

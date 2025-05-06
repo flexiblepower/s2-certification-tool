@@ -13,7 +13,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class WebSocketConnectionAdapter(ConnectionAdapter):
+class WebSocketConnectionAdapter(ConnectionAdapter[str]):
     is_open = True
 
     def __init__(self, ws_connection: WSConnection):

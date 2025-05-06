@@ -2,6 +2,7 @@ import abc
 import asyncio
 
 import logging
+from typing import Generic, TypeVar
 
 import websockets
 
@@ -20,18 +21,18 @@ class ConnectionProtocolError(ConnectionError):
     """Raised for protocol errors."""
 
 
-class ConnectionError(ConnectionError):
-    """Raised for connection errors."""
+# The generic type that the messages sent and received should have. 
+T = TypeVar("T")
 
 
-class ConnectionAdapter(abc.ABC):
+class ConnectionAdapter(Generic[T], abc.ABC):
     """
     On server we use FastAPI's websocket and on local we use the websockets package.
-    These have slightly different interfaces so this just wraps them.
+    These have slightly different interfaces so this adapter allows wrapping of the different websocket implementations.
     """
 
     @abc.abstractmethod
-    async def receive(self) -> str:
+    async def receive(self) -> T:
         """
         Receive a message from the websocket.
         Raises:
@@ -41,7 +42,7 @@ class ConnectionAdapter(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def send(self, message: str):
+    async def send(self, message: T):
         """
         Send a message over the websocket.
         Raises:

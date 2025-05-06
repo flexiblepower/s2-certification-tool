@@ -7,15 +7,17 @@ from testsuites.test_executor import IntegrationTestExecutor
 from websockets.asyncio.connection import Connection as WSConnection
 from websockets.asyncio.server import serve as ws_serve
 from ws_adapter import WebSocketConnectionAdapter
-from connectivity.channel import Channel
+from connectivity.channel import Channel, BaseChannel
 from connectivity.s2_channel import S2Channel
+
+from testsuites.certification_executor import AbstractCertificationExecutor
 
 logger = logging.getLogger(__name__)
 
 
 class S2Server:
     # Receives incoming S2 Resource Manager WebSocket Connections
-    executor: IntegrationTestExecutor
+    executor: AbstractCertificationExecutor
     mode: Literal["testing", "certification"]
 
     _exit_event: asyncio.Event
@@ -45,7 +47,10 @@ class S2Server:
             logger.info("Connection to RM opened.")
             connection = WebSocketConnectionAdapter(websocket)
 
-            s2_channel = S2Channel(connection)
+            if self.mode == "testing":
+                s2_channel = S2Channel(connection)
+            else:
+                s2_channel = BaseChannel(connection)
 
             await self.executor.run(s2_channel)
 

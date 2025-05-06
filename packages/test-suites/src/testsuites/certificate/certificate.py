@@ -1,7 +1,5 @@
-from email import message
 import logging
 from datetime import datetime
-import json
 from typing import List, Optional, Type
 from enum import Enum
 
@@ -9,7 +7,6 @@ from pydantic import BaseModel, field_serializer
 import yaml
 
 from s2python.message import S2Message
-
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +41,6 @@ class ComplianceFinding(BaseModel):
             param = ComplianceParameter(name=name, status=status)
         elif param is None:
             raise ValueError("Either the param must be set or name and status.")
-        
 
         self.parameters.append(param)
 

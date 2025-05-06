@@ -11,7 +11,7 @@ from testsuites.certificate.certificate import (
     ComplianceReport,
     ComplianceStatus,
 )
-from testsuites.config import BaseTestConfig, ControlTypeTestConfig
+from connectivity.config import BaseTestConfig, ControlTypeTestConfig
 from testsuites.controllers.controller import Controller
 from s2python.common import ControlType as ProtocolControlType
 from s2python.message import S2Message

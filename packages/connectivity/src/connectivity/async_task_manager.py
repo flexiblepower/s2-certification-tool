@@ -1,7 +1,7 @@
 import asyncio
 
 import logging
-from typing import Coroutine
+from typing import Coroutine, Set
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class AsyncTaskManager:
 
     """
 
-    _tasks = set()
+    _tasks: Set[asyncio.Task] = set()
 
     _stop_event: asyncio.Event
 
@@ -37,22 +37,26 @@ class AsyncTaskManager:
 
         TODO: Maybe handle the exceptions in a better way...
         """
+        task_name = getattr(task, '__name__', str(task))
         try:
             await task
             if stop_on_complete:
-                logger.debug("Task execution complete. Stopping.")
+                logger.debug("Task execution complete. Stopping. %s", task_name)
                 await self.stop()
+        except asyncio.CancelledError:
+            logger.info("Task %s was cancelled.", task_name)
         except:
-            logger.exception("Exception in task!")
+            logger.exception("Exception in task %s!", task_name)
             await self.stop()
 
     def create_task(self, task: Coroutine, stop_on_complete=False):
         self._tasks.add(asyncio.create_task(self.task_wrapper(task, stop_on_complete)))
 
-    async def setup(self):
+    async def setup(self, *args, **kwargs):
         self._stop_event = asyncio.Event()
 
-    async def cleanup(self):
+    async def cleanup(self, *args, **kwargs):
+        logger.info("Cleanup of %s", self.__class__.__name__)
         for task in self._tasks:
             task.cancel()
 

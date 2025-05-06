@@ -1,9 +1,9 @@
 from enum import Enum
-from typing import Union
+import json
+from typing import Type, Union
 from pydantic import BaseModel
 
-from s2python.message import S2Message
-from testsuites.config import Config
+from connectivity.config import Config
 
 
 class ServerMessageValidationException(Exception):
@@ -34,6 +34,10 @@ class ConfigControlMessage(BaseModel):
 ControlMessage = Union[ConfigControlMessage]
 
 
+class BaseEnvelope(BaseModel):
+    message_type: MessageEnvelopeTypeEnum
+
+
 class ControlMessageEnvelope(BaseModel):
     message_type: MessageEnvelopeTypeEnum = MessageEnvelopeTypeEnum.CONTROL
     message: ControlMessage
@@ -50,4 +54,24 @@ class S2MessageEnvelope(BaseModel):
     message: str
 
 
-ServerMessageEnvelope = Union[ControlMessageEnvelope, LogMessageEnvelope, S2MessageEnvelope]
+ServerMessageEnvelope = Union[
+    ControlMessageEnvelope, LogMessageEnvelope, S2MessageEnvelope
+]
+
+envelope_types_dict = {
+    MessageEnvelopeTypeEnum.CONTROL: ControlMessageEnvelope,
+    MessageEnvelopeTypeEnum.S2: S2MessageEnvelope,
+    MessageEnvelopeTypeEnum.LOG: LogMessageEnvelope,
+}
+
+
+def parse_envelope(str_msg: str) -> ServerMessageEnvelope:
+    msg_dict = json.loads(str_msg)
+
+    try:
+        msg_type = MessageEnvelopeTypeEnum[msg_dict["message_type"]]
+        envelope_type: Type[ServerMessageEnvelope] = envelope_types_dict[msg_type]
+    except KeyError:
+        raise ValueError("Invalid Message Envelope Type.")
+
+    return envelope_type.model_validate_json(str_msg)

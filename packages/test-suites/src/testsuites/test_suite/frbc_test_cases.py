@@ -9,7 +9,7 @@ from testsuites.certificate.certificate import (
     ComplianceReport,
     ComplianceStatus,
 )
-from testsuites.config import FRBCTestConfig, PEBCTestConfig
+from connectivity.config import FRBCTestConfig, PEBCTestConfig
 from testsuites.controllers.frbc_controller import FRBCController
 from s2python.common import PowerMeasurement, ControlType as ProtocolControlType
 from s2python.frbc import (

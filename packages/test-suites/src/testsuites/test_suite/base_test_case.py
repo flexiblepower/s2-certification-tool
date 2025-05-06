@@ -3,7 +3,6 @@ from ..certificate.certificate import (
     ComplianceReport,
     ComplianceStatus,
 )
-from ..config import BaseTestConfig
 from ..controllers.controller import BaseController
 from ..test_suite.test_suite import S2TestCase
 
@@ -13,6 +12,7 @@ from s2python.common import (
     ControlType as ProtocolControlType,
     ResourceManagerDetails,
 )
+from connectivity.config import BaseTestConfig
 from connectivity.s2_channel import S2Channel
 
 class NoSelectionTestCase(S2TestCase):

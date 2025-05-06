@@ -12,7 +12,7 @@ from testsuites.controllers import (
 from testsuites.orchestrator import IntegrationTestOrchestrator, Orchestrator
 from testsuites.test_suite import PEBCTestCase, TestSuiteBuilder
 from testsuites.test_suite.frbc_test_cases import FRBCTestCase
-from testsuites.config import Config
+from connectivity.config import Config
 
 
 def create_controllers_dict_with_config(

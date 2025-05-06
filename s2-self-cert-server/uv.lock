@@ -623,6 +623,7 @@ name = "test-suites"
 version = "0.1.0"
 source = { editable = "../packages/test-suites" }
 dependencies = [
+    { name = "connectivity" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "s2-python" },
@@ -631,6 +632,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "connectivity", editable = "../packages/connectivity" },
     { name = "pydantic", specifier = ">=2.11.3" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "s2-python", editable = "../packages/s2-python" },

@@ -8,7 +8,7 @@ from testsuites.certificate.certificate import (
     ComplianceReport,
     ComplianceStatus,
 )
-from testsuites.config import BaseTestConfig, PEBCTestConfig
+from connectivity.config import BaseTestConfig, PEBCTestConfig
 from testsuites.controllers.controller import Controller
 from testsuites.controllers.pebc_controller import PEBCController
 from s2python.common import (

@@ -6,7 +6,7 @@ from connectivity.connection_adapter import (
 )
 
 
-class FastAPIWebSocketAdapter(ConnectionAdapter):
+class FastAPIWebSocketAdapter(ConnectionAdapter[str]):
     def __init__(self, websocket: WebSocket):
         self.websocket = websocket
 

@@ -49,7 +49,7 @@ class SendOkay:
             await self.run_async()
 
 
-class S2Channel(Channel):
+class S2Channel(Channel[S2Message, str]):
 
     s2_parser: S2Parser
 
@@ -61,12 +61,12 @@ class S2Channel(Channel):
         self.reception_status_awaiter = ReceptionStatusAwaiter()
         self.s2_parser = S2Parser()
 
-        self.message_queue: asyncio.Queue[S2Message] = asyncio.Queue()
+        self.message_queue = asyncio.Queue()
 
-    async def _send_and_forget(self, s2_msg: S2Message) -> None:
-        message = s2_msg.model_dump_json()
+    async def send(self, message: S2Message):
+        str_msg = message.model_dump_json()
 
-        await self.connection.send(message)
+        return await self.connection.send(str_msg)
 
     async def respond_with_reception_status(
         self,
@@ -82,7 +82,7 @@ class S2Channel(Channel):
             status=status,
             diagnostic_label=diagnostic_label,
         )
-        await self._send_and_forget(msg)
+        await self.send(msg)
 
     async def send_msg_and_await_reception_status(
         self,
@@ -90,7 +90,7 @@ class S2Channel(Channel):
         timeout_reception_status: float = 5,
         raise_on_error: bool = True,
     ) -> ReceptionStatus:
-        await self._send_and_forget(s2_msg)
+        await self.send(s2_msg)
         logger.debug(
             "Waiting for ReceptionStatus for %s %s seconds",
             s2_msg.message_id,  # type: ignore[attr-defined, union-attr]
@@ -118,7 +118,7 @@ class S2Channel(Channel):
         try:
             s2_msg: S2Message = self.s2_parser.parse_as_any_message(message)
         except json.JSONDecodeError:
-            await self._send_and_forget(
+            await self.send(
                 ReceptionStatus(
                     subject_message_id=uuid.UUID(
                         "00000000-0000-0000-0000-000000000000"
@@ -161,17 +161,3 @@ class S2Channel(Channel):
                 await self.reception_status_awaiter.receive_reception_status(s2_msg)
             else:
                 await self.message_queue.put(s2_msg)
-
-
-class ChannelConnection(ConnectionAdapter):
-
-    def __init__(self, channel: Channel):
-        self.channel = channel
-
-    async def send(self, message: str):
-        await self.channel.send(message)
-
-    async def receive(self) -> str:
-        message = await self.channel.get_next_message()
-
-        return message

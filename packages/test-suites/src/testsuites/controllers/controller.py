@@ -44,7 +44,9 @@ class Controller(MessageHandler):
         self.add_handler(Handshake, self.handle_handshake)
         self.add_handler(ResourceManagerDetails, self.handle_rm_details)
 
-    def handle_message(self, message: S2Message, channel: "S2Channel"):
+    def handle_message(self, message: S2Message, channel: Optional[S2Channel]):
+        if channel is None:
+            raise ValueError("Channel must be provided.")
         try:
             result = super().handle_message(message, channel)
         except:
@@ -135,7 +137,7 @@ class Controller(MessageHandler):
         await send_okay
 
         self._resource_manager_details_received.set()
-    
+
     async def wait_until_rm_details_received(self):
         await self._resource_manager_details_received.wait()
 
