@@ -1,21 +1,6 @@
 device:
   manufacturer: ABCD
   name: Some Device
-findings:
-- parameters:
-  - name: PowerForecast Provided.
-    status: PASS
-  status: PASS
-  test: Test Receive Power Forecast
-- parameters:
-  - name: PowerMeasurement Provided.
-    status: PASS
-  status: PASS
-  test: Test Receive Power Measurement
-- parameters:
-  - name: PEBCPowerConstraints Received.
-    status: PASS
-  status: PASS
-  test: Test receive PEBCPowerConstraints
-signature: TEST SERVER SIGNATURE
-timestamp: 2025-05-08 13:46:35.222056
+findings: []
+signature: null
+timestamp: 2025-05-08 16:38:59.518045

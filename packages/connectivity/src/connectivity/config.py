@@ -46,8 +46,15 @@ class DeviceDetails(BaseModel):
     manufacturer: str
 
 
+class ConnectionConfig(BaseModel):
+    mode: Literal["server", "client"] = "client"
+    host: str = "0.0.0.0"
+    port: int = 8000
+
+
 class Config(BaseModel):
     mode: Literal["testing", "certification"]
+    connection: ConnectionConfig
     device_details: Optional[DeviceDetails]
     control_types: ControlTypeTestConfig
 

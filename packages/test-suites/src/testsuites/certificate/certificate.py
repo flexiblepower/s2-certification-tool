@@ -16,6 +16,7 @@ class ComplianceStatus(Enum):
     PASS = "PASS"
     FAIL = "FAIL"
     N_A = "N/A"
+    # ? Maybe add failed but not critical type?
 
 
 class ComplianceParameter(BaseModel):

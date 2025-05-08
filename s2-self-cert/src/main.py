@@ -9,7 +9,7 @@ import logging.config
 
 from connectivity.config import Config, load_config
 from log import LOGGING_CONFIG
-from server import S2Server
+from server import S2WebSocketClient, S2WebSocketServer
 from server_side_certification_orchestrator import CertificationTestExecutor
 from testsuites.certification_executor import AbstractCertificationExecutor
 from testsuites.test_executor import create_test_executor
@@ -47,9 +47,24 @@ async def main():
     logger.info("-" * 40)
     logger.info(f"Starting in {config.mode} mode...")
 
-    s2_server = S2Server("0.0.0.0", 8000, test_executor, config.mode, args.output)
-
-    await s2_server.start()
+    if config.connection.mode == "server":
+        s2_server = S2WebSocketServer(
+            config.connection.host,
+            config.connection.port,
+            test_executor,
+            config.mode,
+            args.output,
+        )
+        await s2_server.start()
+    else:
+        s2_client = S2WebSocketClient(
+            config.connection.host,
+            config.connection.port,
+            test_executor,
+            config.mode,
+            args.output,
+        )
+        await s2_client.start()
 
     # report.export()
 

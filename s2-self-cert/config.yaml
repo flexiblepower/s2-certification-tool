@@ -2,7 +2,11 @@
 device_details:
   name: Some Device
   manufacturer: ABCD
-mode: certification
+mode: testing
+connection:
+  mode: server
+  host: 127.0.0.1
+  port: 8000
 control_types:
   no_selection: null
   pebc: 
