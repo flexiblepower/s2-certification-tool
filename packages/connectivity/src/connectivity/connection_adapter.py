@@ -53,7 +53,7 @@ class ConnectionAdapter(Generic[T], abc.ABC):
 
     @property
     @abc.abstractmethod
-    async def open(self) -> bool:
+    def open(self) -> bool:
         """
         Returns True if the connection is open.
         """

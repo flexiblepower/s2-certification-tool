@@ -103,7 +103,7 @@ class S2TestCase(abc.ABC):
         logger.info(
             "Executing test case %s. Has %s tests.",
             self.__class__.__name__,
-            self.get_test_cases(),
+            len(self.get_test_cases()),
         )
         for name, method in self.get_test_cases():
             logger.info(f"Running test case: {name}")

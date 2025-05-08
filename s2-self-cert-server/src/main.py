@@ -81,7 +81,7 @@ class MockChannel(Channel[str, str]):
     connection: MockConnectionAdapter
 
     async def send(self, message: str):
-        logger.info("S2 Message: %s", message)
+        # logger.info("S2 Message: %s", message)
         await self.connection.put_incoming(message)
 
     async def receive(self) -> str:

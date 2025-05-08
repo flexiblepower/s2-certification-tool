@@ -22,6 +22,13 @@ from connectivity.server_models import (
     ControlMessageEnvelope,
 )
 
+from connectivity.connection_adapter import (
+    ConnectionAdapter,
+    ConnectionClosed,
+    ConnectionError,
+    ConnectionProtocolError,
+)
+
 import logging
 
 from testsuites.certificate.certificate import ComplianceReport
@@ -115,6 +122,9 @@ class AbstractCertificationExecutor(MessageHandler[ControlMessage], AsyncTaskMan
                     continue  # Check stop event and loop again
 
                 await process_message(message)
+        except ConnectionClosed:
+            # Exit when channel has been closed.
+            pass
         except asyncio.CancelledError:
             logger.info("Message Channel cancelled.")
         except Exception as e:

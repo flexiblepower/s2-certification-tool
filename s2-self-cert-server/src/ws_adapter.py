@@ -4,6 +4,7 @@ from connectivity.connection_adapter import ConnectionAdapter, ConnectionClosed,
 
 class FastAPIWebSocketAdapter(ConnectionAdapter[str]):
     def __init__(self, websocket: WebSocket):
+        self.connected = True
         self.websocket = websocket
 
     async def receive(self) -> str:
@@ -11,9 +12,11 @@ class FastAPIWebSocketAdapter(ConnectionAdapter[str]):
             data = await self.websocket.receive_text()
             return data
         except WebSocketDisconnect:
+            self.connected = False
             raise ConnectionClosed("Websocket is closed.")
         except RuntimeError as e:
             # Starlette raises RuntimeError if the connection is closed
+            self.connected = False
             raise ConnectionClosed(f"Websocket is closed: {e}")
         except Exception as e:
             raise ConnectionError(f"Unknown websocket error: {e}")
@@ -23,16 +26,18 @@ class FastAPIWebSocketAdapter(ConnectionAdapter[str]):
             await self.websocket.send_text(message)
         except RuntimeError as e:
             # Starlette raises RuntimeError if the connection is closed
+            self.connected = False
             raise ConnectionClosed(f"Websocket is closed: {e}")
         except Exception as e:
             raise ConnectionError(f"Unknown websocket error: {e}")
 
     @property
-    async def open(self) -> bool:
-        return self.websocket.application_state == WebSocketState.CONNECTED
+    def open(self) -> bool:
+        return self.websocket.application_state == WebSocketState.CONNECTED and self.connected
 
     async def close(self, code: int = 1000, reason: str = ""):
         try:
-            await self.websocket.close(code=code)
+            if self.open:
+                await self.websocket.close(code=code)
         except Exception as e:
             raise ConnectionError(f"Error closing websocket: {e}")

@@ -90,7 +90,7 @@ class IntegrationTestExecutor:
                 except asyncio.TimeoutError:
                     continue  # Check stop event and loop again
 
-                logger.info(message)
+                # logger.info(message)
                 await self.process_message(message)
         except asyncio.CancelledError:
             logger.info("Message Channel cancelled.")

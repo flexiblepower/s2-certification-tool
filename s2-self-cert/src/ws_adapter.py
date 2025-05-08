@@ -49,7 +49,7 @@ class WebSocketConnectionAdapter(ConnectionAdapter[str]):
             raise ConnectionError(f"Unknown websocket error: {e}")
 
     @property
-    async def open(self) -> bool:
+    def open(self) -> bool:
         return self.is_open
 
     async def close(self, code: int = 1000, reason: str = ""):
