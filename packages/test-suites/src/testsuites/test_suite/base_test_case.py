@@ -15,6 +15,7 @@ from s2python.common import (
 from connectivity.config import BaseTestConfig
 from connectivity.s2_channel import S2Channel
 
+
 class NoSelectionTestCase(S2TestCase):
 
     control_type = ProtocolControlType.NO_SELECTION
@@ -34,7 +35,7 @@ class NoSelectionTestCase(S2TestCase):
         super().__init__(config, channel, controller, report)
 
     async def test_validate_rm_details_received(self):
-        finding = ComplianceFinding(message_type=ResourceManagerDetails)
+        finding = ComplianceFinding(test="Test Receive RM Details")
 
         if self.controller.resource_manager_details is not None:
             finding.add_parameter(
@@ -49,7 +50,7 @@ class NoSelectionTestCase(S2TestCase):
     @S2TestCase.test
     async def test_receive_power_forecast(self):
 
-        finding = ComplianceFinding(message_type=PowerForecast)
+        finding = ComplianceFinding(test="Test Receive Power Forecast")
 
         message = await self.check_receive_message_type(PowerForecast, finding)
 
@@ -57,7 +58,7 @@ class NoSelectionTestCase(S2TestCase):
 
     @S2TestCase.test
     async def test_receive_power_measurement(self):
-        finding = ComplianceFinding(message_type=PowerMeasurement)
+        finding = ComplianceFinding(test="Test Receive Power Measurement")
 
         message = await self.check_receive_message_type(PowerMeasurement, finding)
 

@@ -13,7 +13,7 @@ from connectivity.async_task_manager import AsyncTaskManager
 from connectivity.config import Config
 from connectivity.channel import Channel
 from s2python.message import S2Message
-from connectivity.server_models import (
+from testsuites.envelope_models import (
     ServerMessageEnvelope,
     S2MessageEnvelope,
     LogMessage,
@@ -31,6 +31,7 @@ from connectivity.connection_adapter import (
 
 import logging
 
+from testsuites.test_executor import AbstractExecutor
 from testsuites.certificate.certificate import ComplianceReport
 
 logger = logging.getLogger(__name__)
@@ -73,7 +74,7 @@ class ControlMessageHandler(MessageHandler[ControlMessage]):
         super().__init__()
 
 
-class AbstractCertificationExecutor(MessageHandler[ControlMessage], AsyncTaskManager):
+class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMessage]):
 
     s2_channel: Channel[str, str]
     server_channel: Channel[ServerMessageEnvelope, str]
@@ -82,10 +83,17 @@ class AbstractCertificationExecutor(MessageHandler[ControlMessage], AsyncTaskMan
 
     report: ComplianceReport
 
+    _stop_event: asyncio.Event
+
     def __init__(self):
         super().__init__()
 
+        # ! Control message handlers
         self.handlers: Dict[Type[ControlMessage], Callable] = {}
+
+        self._stop_event = asyncio.Event()
+
+        self.running = False
 
     async def main_loop(self):
         logger.info("Starting Main Loop.")
@@ -93,7 +101,7 @@ class AbstractCertificationExecutor(MessageHandler[ControlMessage], AsyncTaskMan
             raise ValueError("Channel not set.")
 
     async def handle_control_message(self, message: ControlMessage):
-        logger.info("Control message: %s", message)
+        await self.handle_message(message)
 
     async def process_server_message(self, message: ServerMessageEnvelope):
         if type(message) == S2MessageEnvelope:
@@ -170,36 +178,88 @@ class AbstractCertificationExecutor(MessageHandler[ControlMessage], AsyncTaskMan
         *args,
         **kwargs,
     ):
-        await super().setup()
+        self._stop_event.clear()
 
         self.s2_channel = s2_channel
         self.server_channel = server_channel
 
-        self.create_task(self.main_loop(), False)
+    def create_tasks(self, tg: asyncio.TaskGroup):
+        tg.create_task(self.main_loop(), name="MainLoop")
 
-        self.create_task(self.s2_channel.run(), False)
-        self.create_task(self.server_channel.run(), False)
+        tg.create_task(self.s2_channel.run(), name="S2ChannelRun")
+        tg.create_task(self.server_channel.run(), name="ServerChannelRun")
 
-        self.create_task(
+        tg.create_task(
             self.process_received_message(
                 self.get_next_s2_channel_message, self.process_rm_message
             ),
-            True,
+            name="ProcessRMMessages",
         )
-        self.create_task(
+        tg.create_task(
             self.process_received_message(
-                server_channel.get_next_message, self.process_server_message
+                self.server_channel.get_next_message, self.process_server_message
             ),
-            True,
+            name="ProcessServerMessages",
         )
 
-    async def run(self, s2_channel, *args, **kwargs):
+    async def cleanup(self, *args, **kwargs):
+        pass
+
+    async def stop(self):
+        if self._stop_event.is_set():
+            return
+
+        logger.debug("Stop Called in class %s", self.__class__.__name__)
+        self._stop_event.set()
+
+        if self.s2_channel is not None:
+            await self.s2_channel.stop()
+
+        if self.server_channel is not None:
+            await self.server_channel.stop()
+
+    async def run(
+        self,
+        s2_channel: Optional[Channel[str, str]],
+        server_channel: Optional[Channel[ServerMessageEnvelope, str]],
+        *args,
+        **kwargs,
+    ):
+
         self.running = True
 
-        await self.setup(s2_channel, *args, **kwargs)
+        if s2_channel is None or server_channel is None:
+            logger.error(
+                "Channel not initialized before run, cannot start channel.run task."
+            )
+            await self.stop()
+            self.running = False
+            return
 
-        await self._stop_event.wait()
+        await self.setup(s2_channel, server_channel, *args, **kwargs)
 
-        await self.cleanup(*args, **kwargs)
+        try:
+            async with asyncio.TaskGroup() as tg:
 
-        self.running = False
+                self.create_tasks(tg)
+
+                logger.info("IntegrationTestExecutor TaskGroup completed successfully.")
+
+        except* Exception as eg:  # Catches one or more exceptions from tasks
+            logger.error(
+                f"ExceptionGroup caught in IntegrationTestExecutor run: {len(eg.exceptions)} exceptions"
+            )
+            for i, exc in enumerate(eg.exceptions):
+                logger.error(
+                    f"  Exception {i+1}/{len(eg.exceptions)} in TaskGroup:",
+                    exc_info=exc,
+                )
+            await self.stop()  # Signal cooperative shutdown for other parts if any
+        # except asyncio.CancelledError:
+        #     logger.warning("IntegrationTestExecutor run method was cancelled externally.")
+        #     self.stop()
+        finally:
+            logger.info("Certification Test Executor run method finishing.")
+            await self.cleanup()  # Perform final cleanup (e.g., channel.stop())
+            logger.info("Cleanup finished.")
+            self.running = False

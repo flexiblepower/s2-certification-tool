@@ -1,3 +1,4 @@
+import abc
 import asyncio
 from datetime import datetime
 import logging
@@ -27,7 +28,23 @@ from connectivity.connection_adapter import ConnectionClosed, ConnectionError
 logger = logging.getLogger(__name__)
 
 
-class IntegrationTestExecutor:
+class AbstractExecutor(abc.ABC):
+
+    report: Optional[ComplianceReport] = None
+
+    _stop_event: asyncio.Event
+
+    running = False
+
+    def is_running(self):
+        return self.running
+
+    @abc.abstractmethod
+    async def run(self, *args, **kwargs):
+        pass
+
+
+class IntegrationTestExecutor(AbstractExecutor):
 
     # The channel which connects to the S2 RM.
     channel: Optional["S2Channel"] = None
@@ -128,8 +145,6 @@ class IntegrationTestExecutor:
 
             await self.execute_test_suite()
 
-            logger.info(self.report.generate_certificate_dict())
-
             logger.info("Exiting Main Loop.")
         except asyncio.CancelledError:
             logger.warning("Main loop was cancelled.")
@@ -229,17 +244,23 @@ class IntegrationTestExecutor:
                     self.running = False
                     return
 
+                # TODO: Should this use `run_channel()`?
                 tg.create_task(self.channel.run(), name="ChannelRun")
                 tg.create_task(self.process_received_messages(), name="MessageProcess")
                 tg.create_task(self.main_loop(), name="MainLoop")
 
                 logger.info("IntegrationTestExecutor TaskGroup completed successfully.")
 
-        except* Exception as eg: # Catches one or more exceptions from tasks
-            logger.error(f"ExceptionGroup caught in IntegrationTestExecutor run: {len(eg.exceptions)} exceptions")
+        except* Exception as eg:  # Catches one or more exceptions from tasks
+            logger.error(
+                f"ExceptionGroup caught in IntegrationTestExecutor run: {len(eg.exceptions)} exceptions"
+            )
             for i, exc in enumerate(eg.exceptions):
-                logger.error(f"  Exception {i+1}/{len(eg.exceptions)} in TaskGroup:", exc_info=exc)
-            await self.stop() # Signal cooperative shutdown for other parts if any
+                logger.error(
+                    f"  Exception {i+1}/{len(eg.exceptions)} in TaskGroup:",
+                    exc_info=exc,
+                )
+            await self.stop()  # Signal cooperative shutdown for other parts if any
         # except asyncio.CancelledError:
         #     logger.warning("IntegrationTestExecutor run method was cancelled externally.")
         #     self.stop()
@@ -267,7 +288,7 @@ def create_controllers_dict_with_config(
 
 
 def create_test_executor(config: Config) -> IntegrationTestExecutor:
-    report = ComplianceReport(timestamp=datetime.now())
+    report = ComplianceReport(timestamp=datetime.now(), device=config.device_details)
 
     controllers = create_controllers_dict_with_config(config)
 

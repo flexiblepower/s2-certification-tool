@@ -64,7 +64,7 @@ class FRBCTestCase(NoSelectionTestCase):
     async def test_receive_frbc_system_description(self):
         await self.wait_for_system_description()
 
-        finding = ComplianceFinding(message_type=FRBCSystemDescription)
+        finding = ComplianceFinding(test="Test receive FRBCSystemDescription")
 
         message = await self.check_receive_message_type(FRBCSystemDescription, finding)
 
@@ -73,7 +73,7 @@ class FRBCTestCase(NoSelectionTestCase):
     @S2TestCase.test
     async def test_receive_actuator_status(self):
 
-        finding = ComplianceFinding(message_type=FRBCActuatorStatus)
+        finding = ComplianceFinding(test="Test receive FRBCActuatorStatus")
 
         message = await self.check_receive_message_type(FRBCActuatorStatus, finding)
 
@@ -82,7 +82,7 @@ class FRBCTestCase(NoSelectionTestCase):
     @S2TestCase.test
     async def test_receive_storage_status(self):
 
-        finding = ComplianceFinding(message_type=FRBCStorageStatus)
+        finding = ComplianceFinding(test="Test receive FRBCStorageStatus")
 
         message = await self.check_receive_message_type(FRBCStorageStatus, finding)
 
@@ -91,7 +91,7 @@ class FRBCTestCase(NoSelectionTestCase):
     @S2TestCase.test
     async def test_receive_usage_forecast(self):
 
-        finding = ComplianceFinding(message_type=FRBCUsageForecast)
+        finding = ComplianceFinding(test="Test receive FRBCUsageForecast")
 
         message = await self.check_receive_message_type(FRBCUsageForecast, finding)
 

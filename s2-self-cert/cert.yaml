@@ -1,21 +1,21 @@
-timestamp: 2025-04-30 11:38:24.250547
 device:
-  manufacturer: ABC
-  device: Solar MK2
-  model: v1.0
+  manufacturer: ABCD
+  name: Some Device
 findings:
-- test: FRBC System Description Test
-  parameters:
-  - name: FRBCSystemDescription Message Received.
+- parameters:
+  - name: PowerForecast Provided.
     status: PASS
   status: PASS
-- test: Power Forecast Test
-  parameters:
-  - name: PowerForecast Message Received.
+  test: Test Receive Power Forecast
+- parameters:
+  - name: PowerMeasurement Provided.
     status: PASS
   status: PASS
-- test: Power Measurement Test
-  parameters:
-  - name: PowerMeasurement Message Received.
+  test: Test Receive Power Measurement
+- parameters:
+  - name: PEBCPowerConstraints Received.
     status: PASS
   status: PASS
+  test: Test receive PEBCPowerConstraints
+signature: TEST SERVER SIGNATURE
+timestamp: 2025-05-08 13:46:35.222056

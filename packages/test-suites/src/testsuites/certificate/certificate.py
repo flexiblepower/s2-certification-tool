@@ -5,6 +5,7 @@ from enum import Enum
 
 from pydantic import BaseModel, field_serializer
 import yaml
+from connectivity.config import DeviceDetails
 
 from s2python.message import S2Message
 
@@ -27,7 +28,7 @@ class ComplianceParameter(BaseModel):
 
 
 class ComplianceFinding(BaseModel):
-    message_type: Type[S2Message]
+    test: str
     status: ComplianceStatus = ComplianceStatus.PASS
     parameters: List[ComplianceParameter] = []
 
@@ -51,14 +52,12 @@ class ComplianceFinding(BaseModel):
     def serializer_status(self, status: ComplianceStatus):
         return status.name
 
-    @field_serializer("message_type")
-    def serializer_message_type(self, message_type: Type[S2Message]):
-        return message_type.__name__
-
 
 class ComplianceReport(BaseModel):
     timestamp: datetime = datetime.now()
     findings: List[ComplianceFinding] = []
+    device: Optional[DeviceDetails]
+    signature: Optional[str] = None
 
     def add_finding(self, finding: ComplianceFinding):
         self.findings.append(finding)
@@ -67,6 +66,8 @@ class ComplianceReport(BaseModel):
         return self.model_dump()
 
     def export(self, filename="cert.yaml"):
+        if filename is None:
+            filename = "cert.yaml"
         with open(filename, "w") as output:
             logger.info("Exporting report to `%s`.", filename)
             cert_data = self.generate_certificate_dict()

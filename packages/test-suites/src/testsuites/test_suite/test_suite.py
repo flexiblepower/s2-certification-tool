@@ -47,7 +47,7 @@ class S2TestCase(abc.ABC):
         logger.info("Checking for %s", message_type)
 
         if report_finding is None:
-            report_finding = ComplianceFinding(message_type=message_type)
+            report_finding = ComplianceFinding(test=message_type)
 
         message = None
         try:

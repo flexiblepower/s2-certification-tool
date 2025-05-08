@@ -5,12 +5,6 @@ import json
 import logging
 from typing import Generic, TypeVar
 
-from connectivity.server_models import (
-    MessageEnvelopeTypeEnum,
-    ServerMessageEnvelope,
-    parse_envelope,
-)
-
 from .connection_adapter import (
     ConnectionAdapter,
     ConnectionClosed,
@@ -90,15 +84,3 @@ class Channel(Generic[T, RawT], abc.ABC):
 class BaseChannel(Channel[str, str]):
     """A str, str channel."""
 
-
-class ServerWebsocketConnectionChannel(Channel[ServerMessageEnvelope, str]):
-    async def send(self, message: ServerMessageEnvelope):
-        str_msg: str = message.model_dump_json()
-
-        return await self.connection.send(str_msg)
-
-    async def process_received_message(self, str_msg: str):
-
-        message = parse_envelope(str_msg)
-
-        await self.message_queue.put(message)

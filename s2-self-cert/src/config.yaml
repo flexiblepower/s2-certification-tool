@@ -1,7 +1,7 @@
 
 device_details:
   name: Some Device
-  manufacturer: ACME
+  manufacturer: ABCD
 mode: certification
 control_types:
   no_selection: null

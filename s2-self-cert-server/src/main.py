@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import FastAPI
 import asyncio
 from enum import Enum
@@ -9,18 +10,21 @@ from fastapi import UploadFile, WebSocket
 from fastapi import WebSocketDisconnect
 from testsuites.certification_executor import AbstractCertificationExecutor
 from connectivity.config import Config
-from connectivity.channel import ServerWebsocketConnectionChannel
+from testsuites.server_websocket_envelope_channel import (
+    ServerWebsocketConnectionChannel,
+)
 from connectivity.s2_channel import S2Channel
 from testsuites.test_executor import IntegrationTestExecutor, create_test_executor
 
 
-from connectivity.server_models import (
+from testsuites.envelope_models import (
     ServerMessageEnvelope,
     S2MessageEnvelope,
     LogMessage,
     LogMessageEnvelope,
     ControlMessage,
     ConfigControlMessage,
+    ReportControlMessage,
     ControlMessageEnvelope,
     ControlMessageType,
     MessageEnvelopeTypeEnum,
@@ -115,13 +119,19 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
         logger.debug("Control Message: %s", message)
         await self.handle_message(message)
 
+    async def send_report(self, report: ComplianceReport):
+        logger.info("Sending report: %s", report)
+        message = ReportControlMessage(report=report)
+
+        await self.send_server_control_message(message)
+
     async def main_loop(self):
 
         await self._config_received.wait()
 
         logger.debug("Config Received.")
 
-        self.report = ComplianceReport()
+        self.report = ComplianceReport(device=self.config.device_details)
 
         self.test_executor = create_test_executor(self.config)
 
@@ -136,19 +146,27 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
 
         report = self.test_executor.report
 
-        logger.info("Report: %s", report)
-        await asyncio.sleep(10)
-        logger.info("Main Loop Complete.")
+        logger.info("Sending report")
 
-    async def setup(
-        self, server_channel: Channel[ServerMessageEnvelope, str], *args, **kwargs
+        report.signature = "TEST SERVER SIGNATURE"
+
+        await self.send_report(report)
+
+        logger.info("Report sent. Exiting Main Loop.")
+
+        await self.stop()
+
+    async def run(
+        self,
+        server_channel: Optional[Channel[ServerMessageEnvelope, str]],
+        *args,
+        **kwargs,
     ):
         self._config_received = asyncio.Event()
 
         self.s2_connection_adapter = MockConnectionAdapter()
         s2_channel_mock = MockChannel(self.s2_connection_adapter)
-
-        return await super().setup(s2_channel_mock, server_channel, *args, **kwargs)
+        return await super().run(s2_channel_mock, server_channel, *args, **kwargs)
 
 
 @app.websocket("/ws")
@@ -164,3 +182,5 @@ async def connect_tester(websocket: WebSocket):
     executor = ServerSideCertificationExecutor()
 
     await executor.run(server_channel)
+
+    logger.info("Disconnected WebSocket.")

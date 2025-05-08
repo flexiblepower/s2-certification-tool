@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import signal
-from typing import Literal
+from typing import Literal, Optional
 
 from testsuites.test_executor import IntegrationTestExecutor
 from websockets.asyncio.connection import Connection as WSConnection
@@ -26,8 +26,9 @@ class S2Server:
         self,
         host,
         port,
-        orchestrator: IntegrationTestExecutor,
+        orchestrator: AbstractCertificationExecutor,
         mode: Literal["testing", "certification"],
+        report_output_file: Optional[str] = None,
     ):
         self._host = host
         self._port = port
@@ -36,6 +37,8 @@ class S2Server:
         self.mode = mode
 
         self.executor = orchestrator
+
+        self.report_output_file = report_output_file
 
     async def handle_incoming_connection(self, websocket: WSConnection):
         """
@@ -51,10 +54,15 @@ class S2Server:
                 logger.info("Starting in test mode. All tests are run locally.")
                 s2_channel = S2Channel(connection)
             else:
-                logger.info("Starting in certification mode. All tests are run remotely.")
+                logger.info(
+                    "Starting in certification mode. All tests are run remotely."
+                )
                 s2_channel = BaseChannel(connection)
 
             await self.executor.run(s2_channel)
+
+            logger.info("Exporting Compliance Report.")
+            self.executor.report.export(self.report_output_file)
 
             logger.info("Connection closed.")
 

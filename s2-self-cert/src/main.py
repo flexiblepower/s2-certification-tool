@@ -20,10 +20,15 @@ logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser(prog="S2 Self Cert")
 parser.add_argument("config")
+parser.add_argument(
+    "-o", "--output", default="cert.yaml", help="Output file for the certificate."
+)
 
 
 def create_server_certification_executor(config: Config) -> CertificationTestExecutor:
-    return CertificationTestExecutor(config)
+    return CertificationTestExecutor(
+        config,
+    )
 
 
 async def main():
@@ -42,7 +47,7 @@ async def main():
     logger.info("-" * 40)
     logger.info(f"Starting in {config.mode} mode...")
 
-    s2_server = S2Server("0.0.0.0", 8000, test_executor, config.mode)
+    s2_server = S2Server("0.0.0.0", 8000, test_executor, config.mode, args.output)
 
     await s2_server.start()
 

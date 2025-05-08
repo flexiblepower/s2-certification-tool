@@ -64,10 +64,10 @@ class PEBCTestCase(NoSelectionTestCase):
     async def validate_power_constraints_set(self):
         await self.wait_until_power_constraints_set()
 
-        finding = ComplianceFinding(message_type=PEBCPowerConstraints)
+        finding = ComplianceFinding(test="Test receive PEBCPowerConstraints")
         finding.add_parameter(
             param=ComplianceParameter(
-                name="PEBCPowerConstraints Provided.", status=ComplianceStatus.PASS
+                name="PEBCPowerConstraints Received.", status=ComplianceStatus.PASS
             )
         )
 
