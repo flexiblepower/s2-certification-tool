@@ -1,9 +1,5 @@
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
-from connectivity.connection_adapter import (
-    ConnectionAdapter,
-    ConnectionClosed,
-    ConnectionError,
-)
+from connectivity.connection_adapter import ConnectionAdapter, ConnectionClosed, ConnectionError
 
 
 class FastAPIWebSocketAdapter(ConnectionAdapter[str]):

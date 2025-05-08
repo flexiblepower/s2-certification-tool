@@ -21,12 +21,13 @@ from testsuites.controllers import (
 from connectivity.async_task_manager import AsyncTaskManager
 from connectivity.s2_channel import S2Channel
 from connectivity.config import Config
+from connectivity.connection_adapter import ConnectionClosed, ConnectionError
 
 
 logger = logging.getLogger(__name__)
 
 
-class IntegrationTestExecutor(AsyncTaskManager):
+class IntegrationTestExecutor:
 
     # The channel which connects to the S2 RM.
     channel: Optional["S2Channel"] = None
@@ -38,13 +39,15 @@ class IntegrationTestExecutor(AsyncTaskManager):
 
     report: ComplianceReport
 
+    _stop_event: asyncio.Event
+    _handshake_complete: asyncio.Event
+
     def __init__(
         self,
         available_control_types: Dict[ProtocolControlType, Controller],
         test_suite: TestSuite,
         report: ComplianceReport,
     ) -> None:
-        super().__init__()
 
         self.controllers = available_control_types
 
@@ -56,6 +59,11 @@ class IntegrationTestExecutor(AsyncTaskManager):
         self.test_suite = test_suite
 
         self.report = report
+
+        self._stop_event = asyncio.Event()
+        self._handshake_complete = asyncio.Event()
+
+        self.running = False
 
     def set_control_type(self, control_type: ProtocolControlType):
         controller = self.controllers[control_type]
@@ -86,9 +94,10 @@ class IntegrationTestExecutor(AsyncTaskManager):
                 await self.process_message(message)
         except asyncio.CancelledError:
             logger.info("Message Channel cancelled.")
+        except ConnectionClosed:
+            pass
         except Exception as e:
             logger.exception("Message processor encountered an error: %s", e)
-        finally:
             await self.stop()
 
     async def execute_test_suite(self):
@@ -106,21 +115,32 @@ class IntegrationTestExecutor(AsyncTaskManager):
         if self.channel is None:
             raise ValueError("Channel not set.")
 
-        await self.controller.perform_handshake(self.channel)
+        try:
+            await self.controller.perform_handshake(self.channel)
 
-        await self.controller.wait_until_rm_details_received()
+            await self.controller.wait_until_rm_details_received()
 
-        logger.info("Handshake Complete!")
+            logger.info("Handshake Complete!")
 
-        await self.send_select_control_type()
+            await self.send_select_control_type()
 
-        logger.info("Starting tests!")
+            logger.info("Starting tests!")
 
-        await self.execute_test_suite()
+            await self.execute_test_suite()
 
-        logger.info(self.report.generate_certificate_dict())
+            logger.info(self.report.generate_certificate_dict())
 
-        logger.info("Exiting Main Loop.")
+            logger.info("Exiting Main Loop.")
+        except asyncio.CancelledError:
+            logger.warning("Main loop was cancelled.")
+            raise  # Propagate for TaskGroup
+        except Exception as e:
+            logger.exception("Exception in main_loop: %s", e)
+            await self.stop()
+            raise
+        finally:
+            logger.info("Main loop finished. Signaling stop.")
+            await self.stop()
 
     async def send_select_control_type(self):
         # TODO: Select the control type in a better way.
@@ -160,33 +180,74 @@ class IntegrationTestExecutor(AsyncTaskManager):
 
         await self.controller.select_control_type(self.channel)
 
-    async def setup(self, channel: S2Channel, *args, **kwargs):
-        await super().setup()
-        self.channel = channel
+    def is_running(self):
+        return self.running
 
-        self._handshake_complete = asyncio.Event()
-
-        self.create_task(self.main_loop(), True)
-
-        self.create_task(self.channel.run(), True)
-        self.create_task(self.process_received_messages(), True)
-
-    async def cleanup(self, *args, **kwargs):
-        await super().cleanup()
+    async def stop(self):
+        logger.debug("Stop Called in class %s", self.__class__.__name__)
+        self._stop_event.set()
 
         if self.channel is not None:
             await self.channel.stop()
 
+    async def setup(self, channel: S2Channel, *args, **kwargs):
+        self.channel = channel
+
+        self._stop_event.clear()
+        self._handshake_complete.clear()
+
+        # self.create_task(self.main_loop(), True)
+
+        # self.create_task(self.channel.run(), True)
+        # self.create_task(self.process_received_messages(), True)
+
+    async def cleanup(self, *args, **kwargs):
+        pass
+
+    async def run_channel(self):
+        if self.channel is None:
+            raise ValueError("S2 Channel is ot provided")
+        try:
+            await self.channel.run()
+        except ConnectionClosed:
+            await self.stop()
+        except ConnectionError:
+            await self.stop()
+
     async def run(self, *args, **kwargs):
         self.running = True
-
         await self.setup(*args, **kwargs)
 
-        await self._stop_event.wait()
+        try:
+            async with asyncio.TaskGroup() as tg:
 
-        await self.cleanup(*args, **kwargs)
+                if self.channel is None:
+                    logger.error(
+                        "Channel not initialized before run, cannot start channel.run task."
+                    )
+                    await self.stop()
+                    self.running = False
+                    return
 
-        self.running = False
+                tg.create_task(self.channel.run(), name="ChannelRun")
+                tg.create_task(self.process_received_messages(), name="MessageProcess")
+                tg.create_task(self.main_loop(), name="MainLoop")
+
+                logger.info("IntegrationTestExecutor TaskGroup completed successfully.")
+
+        except* Exception as eg: # Catches one or more exceptions from tasks
+            logger.error(f"ExceptionGroup caught in IntegrationTestExecutor run: {len(eg.exceptions)} exceptions")
+            for i, exc in enumerate(eg.exceptions):
+                logger.error(f"  Exception {i+1}/{len(eg.exceptions)} in TaskGroup:", exc_info=exc)
+            await self.stop() # Signal cooperative shutdown for other parts if any
+        # except asyncio.CancelledError:
+        #     logger.warning("IntegrationTestExecutor run method was cancelled externally.")
+        #     self.stop()
+        finally:
+            logger.info("IntegrationTestExecutor run method finishing.")
+            await self.cleanup()  # Perform final cleanup (e.g., channel.stop())
+            logger.info("Cleanup finished.")
+            self.running = False
 
 
 def create_controllers_dict_with_config(

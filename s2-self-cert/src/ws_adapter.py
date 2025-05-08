@@ -20,6 +20,8 @@ class WebSocketConnectionAdapter(ConnectionAdapter[str]):
         self.ws_connection = ws_connection
 
     async def receive(self) -> str:
+        if not self.is_open:
+            raise ConnectionClosed("Websocket is closed.")
         try:
             message = await self.ws_connection.recv()
             logger.debug("Received: %s", message)
@@ -52,6 +54,7 @@ class WebSocketConnectionAdapter(ConnectionAdapter[str]):
 
     async def close(self, code: int = 1000, reason: str = ""):
         try:
+            logger.info("Closing WS.")
             await self.ws_connection.close(code=code, reason=reason)
         except Exception as e:
             raise ConnectionError(f"Error closing websocket: {e}")

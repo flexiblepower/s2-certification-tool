@@ -48,8 +48,10 @@ class S2Server:
             connection = WebSocketConnectionAdapter(websocket)
 
             if self.mode == "testing":
+                logger.info("Starting in test mode. All tests are run locally.")
                 s2_channel = S2Channel(connection)
             else:
+                logger.info("Starting in certification mode. All tests are run remotely.")
                 s2_channel = BaseChannel(connection)
 
             await self.executor.run(s2_channel)

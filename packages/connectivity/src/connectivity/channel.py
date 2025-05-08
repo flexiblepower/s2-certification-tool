@@ -32,7 +32,7 @@ RawT = TypeVar("RawT")
 
 class Channel(Generic[T, RawT], abc.ABC):
     connection: ConnectionAdapter[RawT]
-    message_queue: asyncio.Queue[T]
+    message_queue: asyncio.Queue[T | None]
     _stop_event: asyncio.Event
 
     def __init__(self, connection: ConnectionAdapter[RawT]) -> None:
@@ -43,7 +43,10 @@ class Channel(Generic[T, RawT], abc.ABC):
         self.message_queue = asyncio.Queue()
 
     async def get_next_message(self) -> T:
-        return await self.message_queue.get()
+        msg = await self.message_queue.get()
+        if msg is None:
+            raise ConnectionClosed("Channel stopped")
+        return msg
 
     async def send(self, message: T):
         return await self.connection.send(message)  # type: ignore
@@ -69,18 +72,18 @@ class Channel(Generic[T, RawT], abc.ABC):
         except ConnectionClosed:
             await self.stop()
         except ConnectionError as e:
-            logger.error("Error whilst receive message from WS: %s", str(e))
+            # logger.error("Error whilst receive message from WS: %s", str(e))
             await self.stop()
-        except asyncio.CancelledError:
-            logger.warning("Cancelled error.")
 
     async def run(self):
         await self.receive_messages()
 
-    async def stop(self):
-        self._stop_event.set()
+        await self.connection.close()
 
-        if await self.connection.open:
+    async def stop(self):
+        if not self._stop_event.is_set():
+            self.message_queue.put_nowait(None)
+            self._stop_event.set()
             await self.connection.close()
 
 
