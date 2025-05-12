@@ -35,8 +35,8 @@ from testsuites.envelope_models import (
 from connectivity.channel import Channel
 
 
-from .log import LOGGING_CONFIG
-from .ws_adapter import FastAPIWebSocketAdapter
+from log import LOGGING_CONFIG
+from ws_adapter import FastAPIWebSocketAdapter
 
 
 logging.config.dictConfig(LOGGING_CONFIG)

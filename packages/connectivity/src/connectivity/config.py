@@ -2,7 +2,7 @@ import logging
 from typing import Optional, Literal
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from s2python.common import ControlType as ProtocolControlType
 
 logger = logging.getLogger(__name__)
@@ -48,8 +48,19 @@ class DeviceDetails(BaseModel):
 
 class ConnectionConfig(BaseModel):
     mode: Literal["server", "client"] = "client"
-    host: str = "0.0.0.0"
-    port: int = 8000
+    host: Optional[str] = "0.0.0.0"
+    port: Optional[int] = 8000
+    uri: Optional[str] = None
+
+    @model_validator(mode="after")
+    def check_mode_fields(cls, values):
+        if values.mode == "client":
+            if not values.uri:
+                raise ValueError("For client mode, 'uri' must be provided.")
+        elif values.mode == "server":
+            if not values.host or values.port is None:
+                raise ValueError("For server mode, 'host' and 'port' must be provided.")
+        return values
 
 
 class Config(BaseModel):

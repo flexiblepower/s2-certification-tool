@@ -4,7 +4,8 @@ device_details:
   manufacturer: ABCD
 mode: testing
 connection:
-  mode: server
+  mode: client
+  uri: ws://127.0.0.1:8001/ws
   host: 127.0.0.1
   port: 8000
 control_types:

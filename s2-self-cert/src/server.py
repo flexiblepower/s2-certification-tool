@@ -9,6 +9,7 @@ from websockets.asyncio.connection import Connection as WSConnection
 from websockets.asyncio.server import serve as ws_serve
 from ws_adapter import WebSocketConnectionAdapter
 from connectivity.channel import Channel, BaseChannel
+from connectivity.config import ConnectionConfig
 from connectivity.s2_channel import S2Channel
 
 from testsuites.certification_executor import AbstractCertificationExecutor
@@ -20,20 +21,20 @@ class S2WebSocketBase:
     executor: AbstractCertificationExecutor
     mode: Literal["testing", "certification"]
 
+    config: ConnectionConfig
+
     _exit_event: asyncio.Event
 
     def __init__(
         self,
-        host,
-        port,
+        config: ConnectionConfig,
         orchestrator: AbstractCertificationExecutor,
         mode: Literal["testing", "certification"],
         report_output_file: Optional[str] = None,
     ):
-        self._host = host
-        self._port = port
         self._exit_event = asyncio.Event()
 
+        self.config = config
         self.mode = mode
 
         self.executor = orchestrator
@@ -90,9 +91,11 @@ class S2WebSocketServer(S2WebSocketBase):
             loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
 
         async with ws_serve(
-            self.start_with_connection, self._host, self._port
+            self.start_with_connection, self.config.host, self.config.port
         ) as ws_server:
-            logger.info(f"Websocket server started at ws://{self._host}:{self._port}")
+            logger.info(
+                f"Websocket server started at ws://{self.config.host}:{self.config.port}"
+            )
             logger.info("Waiting for RM connection...")
             await self._exit_event.wait()
             logger.info(f"Server stopping.")
@@ -109,8 +112,8 @@ class S2WebSocketClient(S2WebSocketBase):
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
 
-        logger.info(f"Connection to Websocket server at ws://{self._host}:{self._port}")
-        async with connect("ws://localhost:8765") as websocket:
+        logger.info(f"Connection to Websocket server at {self.config.uri}")
+        async with connect(self.config.uri) as websocket:
             await self.start_with_connection(websocket)
 
     async def stop(self):

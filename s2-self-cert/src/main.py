@@ -49,8 +49,7 @@ async def main():
 
     if config.connection.mode == "server":
         s2_server = S2WebSocketServer(
-            config.connection.host,
-            config.connection.port,
+            config.connection,
             test_executor,
             config.mode,
             args.output,
@@ -58,8 +57,7 @@ async def main():
         await s2_server.start()
     else:
         s2_client = S2WebSocketClient(
-            config.connection.host,
-            config.connection.port,
+            config.connection,
             test_executor,
             config.mode,
             args.output,
