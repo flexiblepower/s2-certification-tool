@@ -42,20 +42,21 @@ class S2MessageAwaiter:
         return message
 
     def receive_message(self, message: S2Message):
-        if message.message_type in self.awaiting:
+        if type(message) in self.awaiting:
             logger.debug(
                 "Received %s message that is being waited for. Setting event.",
                 message.message_type,
             )
-            awaiting = self.awaiting[message.message_type]
-            if self.awaiting:
-                # Set the message first before triggering the event to make sure that the
-                # waiting method gets the message.
-                awaiting[1] = message  # type: ignore
-                awaiting[0].set()
+            event = self.awaiting[type(message)][0]
+
+            # Set the message first before triggering the event to make sure that the
+            # waiting method gets the message.
+            self.awaiting[type(message)] = (event, message)
+
+            event.set()
         else:
             logger.debug(
-                "Received %s message but nothing waiting for it.", message.message_type
+                "Received %s message but nothing waiting for it.", type(message)
             )
 
 
