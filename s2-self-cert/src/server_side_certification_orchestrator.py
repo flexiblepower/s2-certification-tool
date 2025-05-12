@@ -38,17 +38,13 @@ from ws_adapter import WebSocketConnectionAdapter
 
 from testsuites.envelope_models import (
     ServerMessageEnvelope,
-    S2MessageEnvelope,
-    LogMessage,
-    LogMessageEnvelope,
-    ControlMessage,
+    ClientInfo,
+    ClientInfoControlMessage,
     ConfigControlMessage,
     ReportControlMessage,
     ControlMessageEnvelope,
-    ControlMessageType,
-    MessageEnvelopeTypeEnum,
-    BaseEnvelope,
 )
+from importlib.metadata import version
 
 
 logger = logging.getLogger(__name__)
@@ -92,8 +88,26 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
 
         return channel
 
+    async def send_client_info_message(self):
+        """Sends information about the client to the server. Currently only checks package version but in future can be used for other information."""
+        logger.info("* Sending Client Details to Server *")
+        logger.debug("Testing Package Version: %s", version("test-suites"))
+        logger.debug("Connectivity Package Version: %s", version("connectivity"))
+
+        message = ClientInfoControlMessage(
+            client_info=ClientInfo(
+                connectivity_version=version("connectivity"),
+                testsuites_version=version("test-suites"),
+            )
+        )
+
+        envelope = ControlMessageEnvelope(message=message)
+
+        self.server_channel.send(envelope)
+
     async def main_loop(self):
 
+        await self.send_client_info_message()
         await self.send_server_control_message(ConfigControlMessage(config=self.config))
 
         logger.info("Config sent.")

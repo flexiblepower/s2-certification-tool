@@ -3,6 +3,7 @@ from typing import (
     Callable,
     Dict,
     Generic,
+    Literal,
     Optional,
     Type,
     TypeVar,
@@ -160,8 +161,14 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
     async def send_s2_message(self, message: str):
         await self.s2_channel.send(message)
 
-    async def send_server_log_message(self, message: LogMessage):
-        envelope = LogMessageEnvelope(message=message)
+    async def send_server_log_message(
+        self,
+        message: str,
+        details: Optional[str] = None,
+        level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO",
+    ):
+        log_message = LogMessage(level=level, message=message, details=details)
+        envelope = LogMessageEnvelope(message=log_message)
         await self.server_channel.send(envelope)
 
     async def get_next_s2_channel_message(self):

@@ -1,6 +1,6 @@
 from enum import Enum
 import json
-from typing import Dict, Type, Union
+from typing import Dict, Optional, Type, Union
 from pydantic import BaseModel, ValidationError
 
 from connectivity.config import Config
@@ -23,13 +23,27 @@ class MessageEnvelopeTypeEnum(str, Enum):
 
 
 class ControlMessageType(str, Enum):
+    CLIENT_INFO = "CLIENT_INFO"
     CONFIG = "CONFIG"
     REPORT = "REPORT"
 
 
 class LogMessage(BaseModel):
     level: str
-    content: str
+    message: str
+    details: Optional[str]
+
+
+class ClientInfo(BaseModel):
+    # The version of the `connectivity` package that the client is using
+    connectivity_version: str
+    # The version of the `test-suites` package that the client is using
+    testsuites_version: str
+
+
+class ClientInfoControlMessage(BaseModel):
+    message_type: ControlMessageType = ControlMessageType.CLIENT_INFO
+    client_info: ClientInfo
 
 
 class ConfigControlMessage(BaseModel):

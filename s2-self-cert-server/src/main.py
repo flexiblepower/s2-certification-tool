@@ -1,3 +1,4 @@
+from importlib.metadata import version
 from typing import Optional
 from fastapi import FastAPI
 import asyncio
@@ -18,6 +19,7 @@ from testsuites.test_executor import IntegrationTestExecutor, create_test_execut
 
 
 from testsuites.envelope_models import (
+    ClientInfoControlMessage,
     ServerMessageEnvelope,
     S2MessageEnvelope,
     LogMessage,
@@ -114,6 +116,27 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
         self.config = message.config
 
         self._config_received.set()
+
+    async def handle_client_info(self, message: ClientInfoControlMessage):
+
+        connectivity_version = version("connectivity")
+        testsuites_version = version("test-suites")
+
+        client_info = message.client_info
+
+        if connectivity_version != client_info.connectivity_version:
+            await self.send_server_log_message(
+                message="Client & Server have mismatched version of package 'connectivity'. Exiting...",
+                details=f"Expected version {connectivity_version} for package 'connectivity' but received {client_info.connectivity_version}.",
+            )
+
+        if testsuites_version != client_info.testsuites_version:
+            await self.send_server_log_message(
+                message="Client & Server have mismatched version of package 'test-suites'. Exiting...",
+                details=f"Expected version {testsuites_version} for package 'test-suites' but received {client_info.testsuites_version}.",
+            )
+
+        await self.stop()
 
     async def handle_control_message(self, message: ControlMessage):
         logger.debug("Control Message: %s", message)
