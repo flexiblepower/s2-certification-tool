@@ -15,6 +15,10 @@ from s2python.common import (
 from connectivity.config import BaseTestConfig
 from connectivity.s2_channel import S2Channel
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class NoSelectionTestCase(S2TestCase):
 
@@ -25,6 +29,7 @@ class NoSelectionTestCase(S2TestCase):
     controller: BaseController
     config: BaseTestConfig
 
+
     def __init__(
         self,
         config: BaseTestConfig,
@@ -33,6 +38,8 @@ class NoSelectionTestCase(S2TestCase):
         report: ComplianceReport,
     ):
         super().__init__(config, channel, controller, report)
+
+    finding = ComplianceFinding(test="Test Receive RM Details")
 
     async def test_validate_rm_details_received(self):
         finding = ComplianceFinding(test="Test Receive RM Details")
@@ -47,19 +54,17 @@ class NoSelectionTestCase(S2TestCase):
 
         self.report.add_finding(finding)
 
+class ReceivePowerForecastTestCase(NoSelectionTestCase):
+    finding = ComplianceFinding(test="Test Receive Power Forecast")
     @S2TestCase.test
     async def test_receive_power_forecast(self):
+        message = await self.check_receive_message_type(PowerForecast)
 
-        finding = ComplianceFinding(test="Test Receive Power Forecast")
 
-        message = await self.check_receive_message_type(PowerForecast, finding)
-
-        self.report.add_finding(finding)
+class ReceivePowerMeasurementTestCase(NoSelectionTestCase):
+    finding = ComplianceFinding(test="Test Receive Power Measurement")
 
     @S2TestCase.test
     async def test_receive_power_measurement(self):
-        finding = ComplianceFinding(test="Test Receive Power Measurement")
+        message = await self.check_receive_message_type(PowerMeasurement)
 
-        message = await self.check_receive_message_type(PowerMeasurement, finding)
-
-        self.report.add_finding(finding)

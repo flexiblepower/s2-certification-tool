@@ -1,13 +1,15 @@
 import asyncio
-from typing import TYPE_CHECKING, Awaitable, Optional
+import datetime
+import json
+from typing import TYPE_CHECKING, Awaitable, List, Optional
+import uuid
 
-from s2python.common import (
-    ControlType as ProtocolControlType,
-    InstructionStatusUpdate,
-)
+from s2python.common import ControlType as ProtocolControlType, InstructionStatusUpdate
 from s2python.pebc import (
     PEBCEnergyConstraint,
     PEBCPowerConstraints,
+    PEBCInstruction,
+    PEBCPowerEnvelope,
 )
 from .controller import BaseController
 from connectivity.s2_channel import S2Channel
@@ -39,7 +41,10 @@ class PEBCController(BaseController):
         channel: "S2Channel",
         send_okay: Awaitable,
     ):
-        logger.info("Received power constraints.")
+        # logger.info("Received power constraints.")
+        # logger.info("----------------------------------------------")
+        # logger.info(json.dumps(message.model_dump(), default=str, indent=2))
+        # logger.info("----------------------------------------------")
         self.power_constraints = message
         self._power_constraints_received.set()
 
@@ -60,6 +65,31 @@ class PEBCController(BaseController):
         send_okay: Awaitable,
     ):
         await send_okay
+
+    async def send_power_envelope_instruction(
+        self,
+        channel: "S2Channel",
+        power_envelopes: List[PEBCPowerEnvelope],
+        execution_time: datetime.datetime = datetime.datetime.now(
+            datetime.timezone.utc
+        ),
+    ) -> PEBCInstruction:
+        if self.power_constraints is None:
+            raise ValueError("Power Constraints not set.")
+
+        instruction = PEBCInstruction(
+            message_id=uuid.uuid4(),
+            id=uuid.uuid4(),  # ? TODO: Should this be a new UUID?
+            power_constraints_id=self.power_constraints.id,
+            power_envelopes=power_envelopes,
+            # Make it timezone-aware (UTC)
+            execution_time=execution_time,
+            abnormal_condition=False,
+        )
+
+        await channel.send_msg_and_await_reception_status(instruction, 5)
+
+        return instruction
 
 
 # class PEBCComplianceReportController(PEBCController):

@@ -25,6 +25,8 @@ class S2TestCase(abc.ABC):
     control_type: ProtocolControlType = ProtocolControlType.NO_SELECTION
     config: BaseTestConfig
 
+    finding: ComplianceFinding
+
     TIMEOUT = 5
 
     def __init__(
@@ -39,15 +41,33 @@ class S2TestCase(abc.ABC):
         self.config = config
         self.report = report
 
+        finding_set = True
+        try:
+            if self.finding is None:
+                finding_set = False
+        except:
+            finding_set = False
+
+        if not finding_set:
+            raise ValueError(
+                "Finding must be declared as a constant for a test case class."
+            )
+
+    def add_finding_param(
+        self,
+        name: str,
+        detail: Optional[str] = None,
+        status: ComplianceStatus = ComplianceStatus.PASS,
+    ):
+        param = ComplianceParameter(name=name, detail=detail, status=status)
+
+        self.finding.add_parameter(param=param)
+
     async def check_receive_message_type(
         self,
         message_type: Type[S2Message],
-        report_finding: Optional[ComplianceFinding] = None,
     ):
         logger.info("Checking for %s", message_type)
-
-        if report_finding is None:
-            report_finding = ComplianceFinding(test=message_type)
 
         message = None
         try:
@@ -67,12 +87,12 @@ class S2TestCase(abc.ABC):
                 message = messages[0]
 
         if message is not None:
-            report_finding.add_parameter(
+            self.add_finding_param(
                 name=f"{message_type.__name__} Provided.",
                 status=ComplianceStatus.PASS,
             )
         else:
-            report_finding.add_parameter(
+            self.add_finding_param(
                 name=f"{message_type.__name__} Not Provided.",
                 status=ComplianceStatus.FAIL,
             )
@@ -133,7 +153,11 @@ class TestSuite:
 
     async def execute(self, channel: S2Channel, controller: Controller):
         control_type = controller.control_type
-        test_cases = self.test_cases.get(control_type, [])
+        test_cases = self.test_cases.get(
+            ProtocolControlType.NO_SELECTION, []
+        )
+        test_cases += self.test_cases.get(control_type, [])
+
         logger.info(self.test_cases)
         logger.info(
             "Executing test suite for %s control type. %s test cases to execute.",
@@ -149,6 +173,8 @@ class TestSuite:
                 self.report,
             )
             await test_case.execute()
+
+            self.report.add_finding(test_case.finding)
 
 
 class TestSuiteBuilder:

@@ -14,6 +14,8 @@ from s2python.common import (
     HandshakeResponse,
     SelectControlType,
     EnergyManagementRole,
+    SessionRequest,
+    SessionRequestType,
 )
 from s2python.s2_validation_error import S2ValidationError
 from connectivity.s2_channel import S2Channel, SendOkay
@@ -140,6 +142,15 @@ class Controller(MessageHandler):
 
     async def wait_until_rm_details_received(self):
         await self._resource_manager_details_received.wait()
+
+    async def perform_disconnect(self, channel: "S2Channel"):
+        await channel.send_msg_and_await_reception_status(
+            SessionRequest(
+                message_id=uuid.uuid4(),
+                request=SessionRequestType.TERMINATE,
+                diagnostic_label="Testing complete.",
+            )
+        )
 
 
 class BaseController(Controller):

@@ -10,7 +10,15 @@ from s2python.message import S2Message
 
 from testsuites.certificate.certificate import ComplianceReport
 from testsuites.test_suite.test_suite import TestSuite, TestSuiteBuilder
-from testsuites.test_suite import FRBCTestCase, PEBCTestCase
+from testsuites.test_suite import (
+    FRBCTestCase,
+    ReceivePowerMeasurementTestCase,
+    ReceivePowerForecastTestCase,
+)
+from testsuites.test_suite.pebc_test_cases import (
+    PEBCCurtailmentInstructionTestCase,
+    PEBCPowerConstraintsTestCase,
+)
 from testsuites.controllers import (
     Controller,
     BaseController,
@@ -144,6 +152,9 @@ class IntegrationTestExecutor(AbstractExecutor):
             logger.info("Starting tests!")
 
             await self.execute_test_suite()
+
+            logger.info("Sending graceful disconnect.")
+            await self.controller.perform_disconnect(self.channel)
 
             logger.info("Exiting Main Loop.")
         except asyncio.CancelledError:
@@ -294,7 +305,10 @@ def create_test_executor(config: Config) -> IntegrationTestExecutor:
 
     test_suite = (
         TestSuiteBuilder(config.control_types, report)
-        .with_test_case(PEBCTestCase)
+        .with_test_case(ReceivePowerForecastTestCase)
+        .with_test_case(ReceivePowerMeasurementTestCase)
+        .with_test_case(PEBCPowerConstraintsTestCase)
+        .with_test_case(PEBCCurtailmentInstructionTestCase)
         .with_test_case(FRBCTestCase)
         .build()
     )

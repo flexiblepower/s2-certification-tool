@@ -15,12 +15,13 @@ logger = logging.getLogger(__name__)
 class ComplianceStatus(Enum):
     PASS = "PASS"
     FAIL = "FAIL"
+    SOFT_FAIL = "SOFT_FAIL"
     N_A = "N/A"
-    # ? Maybe add failed but not critical type?
 
 
 class ComplianceParameter(BaseModel):
     name: str
+    detail: Optional[str] = None
     status: ComplianceStatus
 
     @field_serializer("status")
@@ -64,7 +65,7 @@ class ComplianceReport(BaseModel):
         self.findings.append(finding)
 
     def generate_certificate_dict(self) -> dict:
-        return self.model_dump()
+        return self.model_dump(exclude_none=True)
 
     def export(self, filename="cert.yaml"):
         if filename is None:
