@@ -40,7 +40,7 @@ async def main():
     if config.mode == "certification":
         test_executor = create_server_certification_executor(config)
     elif config.mode == "testing":
-        test_executor = create_test_executor(config)
+        test_executor = create_test_executor(config, logger)
     else:
         raise ValueError("Invalid mode.")
 

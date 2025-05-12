@@ -7,6 +7,7 @@ connection:
   mode: server
   host: 127.0.0.1
   port: 8000
+  uri: ws://localhost:8001/backend/cem/cem1/rm/pv1/ws
 control_types:
   no_selection: null
   pebc: 

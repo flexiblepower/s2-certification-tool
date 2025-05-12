@@ -67,11 +67,14 @@ class IntegrationTestExecutor(AbstractExecutor):
     _stop_event: asyncio.Event
     _handshake_complete: asyncio.Event
 
+    logger: logging.Logger
+
     def __init__(
         self,
         available_control_types: Dict[ProtocolControlType, Controller],
         test_suite: TestSuite,
         report: ComplianceReport,
+        logger: logging.Logger = logging.getLogger(__name__),
     ) -> None:
 
         self.controllers = available_control_types
@@ -84,6 +87,8 @@ class IntegrationTestExecutor(AbstractExecutor):
         self.test_suite = test_suite
 
         self.report = report
+
+        self.logger = logger
 
         self._stop_event = asyncio.Event()
         self._handshake_complete = asyncio.Event()
@@ -118,11 +123,11 @@ class IntegrationTestExecutor(AbstractExecutor):
                 # logger.info(message)
                 await self.process_message(message)
         except asyncio.CancelledError:
-            logger.info("Message Channel cancelled.")
+            self.logger.info("Message Channel cancelled.")
         except ConnectionClosed:
             pass
         except Exception as e:
-            logger.exception("Message processor encountered an error: %s", e)
+            self.logger.exception("Message processor encountered an error: %s", e)
             await self.stop()
 
     async def execute_test_suite(self):
@@ -136,7 +141,7 @@ class IntegrationTestExecutor(AbstractExecutor):
             await self.test_suite.execute(self.channel, self.controller)
 
     async def main_loop(self):
-        logger.info("Starting Main Loop.")
+        self.logger.info("Starting Main Loop.")
         if self.channel is None:
             raise ValueError("Channel not set.")
 
@@ -145,32 +150,32 @@ class IntegrationTestExecutor(AbstractExecutor):
 
             await self.controller.wait_until_rm_details_received()
 
-            logger.info("Handshake Complete!")
+            self.logger.info("Handshake Complete!")
 
             await self.send_select_control_type()
 
-            logger.info("Starting tests!")
+            self.logger.info("Starting tests!")
 
             await self.execute_test_suite()
 
-            logger.info("Sending graceful disconnect.")
+            self.logger.info("Sending graceful disconnect.")
             await self.controller.perform_disconnect(self.channel)
 
-            logger.info("Exiting Main Loop.")
+            self.logger.info("Exiting Main Loop.")
         except asyncio.CancelledError:
-            logger.warning("Main loop was cancelled.")
+            self.logger.warning("Main loop was cancelled.")
             raise  # Propagate for TaskGroup
         except Exception as e:
-            logger.exception("Exception in main_loop: %s", e)
+            self.logger.exception("Exception in main_loop: %s", e)
             await self.stop()
             raise
         finally:
-            logger.info("Main loop finished. Signaling stop.")
+            self.logger.info("Main loop finished. Signaling stop.")
             await self.stop()
 
     async def send_select_control_type(self):
         # TODO: Select the control type in a better way.
-        logger.info("Selecting Control Type.")
+        self.logger.info("Selecting Control Type.")
         if (
             self.controller.resource_manager_details is None
             or self.controller.resource_manager_details.available_control_types is None
@@ -197,11 +202,11 @@ class IntegrationTestExecutor(AbstractExecutor):
             # )
 
         if control_type is None:
-            logger.warning("No suitable control types available. Exiting...")
+            self.logger.warning("No suitable control types available. Exiting...")
             await self.stop()
             return
 
-        logger.info("Selecting control type %s", control_type)
+        self.logger.info("Selecting control type %s", control_type)
         self.set_control_type(control_type)
 
         await self.controller.select_control_type(self.channel)
@@ -210,7 +215,7 @@ class IntegrationTestExecutor(AbstractExecutor):
         return self.running
 
     async def stop(self):
-        logger.debug("Stop Called in class %s", self.__class__.__name__)
+        self.logger.debug("Stop Called in class %s", self.__class__.__name__)
         self._stop_event.set()
 
         if self.channel is not None:
@@ -248,7 +253,7 @@ class IntegrationTestExecutor(AbstractExecutor):
             async with asyncio.TaskGroup() as tg:
 
                 if self.channel is None:
-                    logger.error(
+                    self.logger.error(
                         "Channel not initialized before run, cannot start channel.run task."
                     )
                     await self.stop()
@@ -260,14 +265,16 @@ class IntegrationTestExecutor(AbstractExecutor):
                 tg.create_task(self.process_received_messages(), name="MessageProcess")
                 tg.create_task(self.main_loop(), name="MainLoop")
 
-                logger.info("IntegrationTestExecutor TaskGroup completed successfully.")
+                self.logger.info(
+                    "IntegrationTestExecutor TaskGroup completed successfully."
+                )
 
         except* Exception as eg:  # Catches one or more exceptions from tasks
-            logger.error(
+            self.logger.error(
                 f"ExceptionGroup caught in IntegrationTestExecutor run: {len(eg.exceptions)} exceptions"
             )
             for i, exc in enumerate(eg.exceptions):
-                logger.error(
+                self.logger.error(
                     f"  Exception {i+1}/{len(eg.exceptions)} in TaskGroup:",
                     exc_info=exc,
                 )
@@ -276,9 +283,9 @@ class IntegrationTestExecutor(AbstractExecutor):
         #     logger.warning("IntegrationTestExecutor run method was cancelled externally.")
         #     self.stop()
         finally:
-            logger.info("IntegrationTestExecutor run method finishing.")
+            self.logger.info("IntegrationTestExecutor run method finishing.")
             await self.cleanup()  # Perform final cleanup (e.g., channel.stop())
-            logger.info("Cleanup finished.")
+            self.logger.info("Cleanup finished.")
             self.running = False
 
 
@@ -298,7 +305,9 @@ def create_controllers_dict_with_config(
     return controllers
 
 
-def create_test_executor(config: Config) -> IntegrationTestExecutor:
+def create_test_executor(
+    config: Config, logger: logging.Logger
+) -> IntegrationTestExecutor:
     report = ComplianceReport(timestamp=datetime.now(), device=config.device_details)
 
     controllers = create_controllers_dict_with_config(config)
@@ -314,7 +323,10 @@ def create_test_executor(config: Config) -> IntegrationTestExecutor:
     )
 
     executor = IntegrationTestExecutor(
-        available_control_types=controllers, test_suite=test_suite, report=report
+        available_control_types=controllers,
+        test_suite=test_suite,
+        report=report,
+        logger=logger,
     )
 
     return executor

@@ -1,9 +1,10 @@
 import uuid
-from typing import List
+from typing import List, Dict, Tuple
 from typing_extensions import Self
 
 from pydantic import model_validator
 
+from s2python.common import CommodityQuantity, NumberRange
 from s2python.generated.gen_s2 import (
     PEBCPowerConstraints as GenPEBCPowerConstraints,
     PEBCPowerEnvelopeConsequenceType as GenPEBCPowerEnvelopeConsequenceType,
@@ -32,15 +33,34 @@ class PEBCPowerConstraints(GenPEBCPowerConstraints, S2MessageComponent):
 
     @model_validator(mode="after")
     def validate_has_one_upper_one_lower_limit_range(self) -> Self:
-        has_upper = any(
-            l.limit_type == PEBCPowerEnvelopeLimitType.UPPER_LIMIT
-            for l in self.allowed_limit_ranges
-        )
-        has_lower = any(
-            l.limit_type == PEBCPowerEnvelopeLimitType.UPPER_LIMIT
-            for l in self.allowed_limit_ranges
-        )
-        if not (has_upper and has_lower):
+
+        commodity_type_ranges: Dict[CommodityQuantity, Tuple[bool, bool]] = {}
+
+        for limit_range in self.allowed_limit_ranges:
+            current: Tuple[bool, bool] = commodity_type_ranges.get(
+                limit_range.commodity_quantity, (False, False)
+            )
+
+            if limit_range.limit_type == PEBCPowerEnvelopeLimitType.UPPER_LIMIT:
+                current = (
+                    True,
+                    current[1],
+                )
+
+            if limit_range.limit_type == PEBCPowerEnvelopeLimitType.LOWER_LIMIT:
+                current = (
+                    current[0],
+                    True,
+                )
+
+            commodity_type_ranges[limit_range.commodity_quantity] = current
+
+        valid = True
+
+        for upper, lower in commodity_type_ranges.values():
+            valid = valid and upper and lower
+
+        if not (valid):
             raise ValueError(
                 self,
                 f"There shall be at least one PEBC.AllowedLimitRange for the UPPER_LIMIT and at least one AllowedLimitRange for the LOWER_LIMIT.",

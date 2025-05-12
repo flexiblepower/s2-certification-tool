@@ -1,6 +1,8 @@
 import datetime
+from enum import Enum
+import json
 import logging
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import uuid
 
 from testsuites.certificate.certificate import (
@@ -17,6 +19,8 @@ from s2python.common import (
     PowerMeasurement,
     InstructionStatusUpdate,
     CommodityQuantity,
+    NumberRange,
+    InstructionStatus,
 )
 from s2python.pebc import (
     PEBCAllowedLimitRange,
@@ -24,11 +28,14 @@ from s2python.pebc import (
     PEBCPowerConstraints,
     PEBCPowerEnvelope,
     PEBCPowerEnvelopeElement,
+    PEBCPowerEnvelopeLimitType,
 )
 from testsuites.test_suite.base_test_case import NoSelectionTestCase
 from testsuites.test_suite.test_suite import S2TestCase
 from connectivity.s2_channel import S2Channel
 from .base import PEBCTestCase
+
+from itertools import product
 
 logger = logging.getLogger(__name__)
 
@@ -51,36 +58,21 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
             ],
         )
 
-    async def curtail_commodity_quantity(
-        self,
-        power_constraints: PEBCPowerConstraints,
-        commodity_quantity: CommodityQuantity,
-        limits: List[PEBCAllowedLimitRange],
-        duration=3600,
+    async def send_power_envelope(
+        self, power_envelope, expected_instruction_status: InstructionStatus
     ):
-        logger.info("Curtailing %s", commodity_quantity)
-
-        power_envelopes = [
-            self.create_power_envelope(
-                commodity_quantity=commodity_quantity,
-                lower_limit=-200,
-                upper_limit=0,
-                duration=duration,
-            )
-        ]
-
         # Prepare coroutines first so the events are waiting in the awaiter.
         # This avoids the case where the message somehow arrives between sending the message and starting to await.
         # This is highly unlikely but might as well make sure!
-        power_measurement_coroutine = self.controller.message_awaiter.wait_for_message(
-            PowerMeasurement, 60
-        )
+        # power_measurement_coroutine = self.controller.message_awaiter.wait_for_message(
+        #     PowerMeasurement, 60
+        # )
         status_update_coroutine = self.controller.message_awaiter.wait_for_message(
             InstructionStatusUpdate, 10
         )
 
         instruction = await self.controller.send_power_envelope_instruction(
-            self.channel, power_envelopes
+            self.channel, [power_envelope]
         )
 
         logger.info("Instruction sent")
@@ -108,9 +100,61 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
                 status=ComplianceStatus.FAIL,
             )
 
-        message = await power_measurement_coroutine
+        if status_update.status_type != expected_instruction_status:
+            self.add_finding_param(
+                name="InstructionStatusUpdate status_type does not matches expected.",
+                detail=f"Received status {status_update.status_type} but expected {expected_instruction_status} for instruction.",
+                status=ComplianceStatus.SOFT_FAIL,
+            )
 
-        logger.info("Received Power Measurement: %s", message)
+        # message = await power_measurement_coroutine
+
+        # logger.info("Received Power Measurement: %s", message)
+
+    async def curtail_commodity_quantity(
+        self,
+        power_constraints: PEBCPowerConstraints,
+        commodity_quantity: CommodityQuantity,
+        limits: List[PEBCAllowedLimitRange],
+        duration=3600,
+    ):
+        logger.info(power_constraints.model_dump_json())
+        logger.info("Curtailing %s", commodity_quantity)
+
+        lower_limits: List[NumberRange] = []
+        upper_limits: List[NumberRange] = []
+
+        for limit in limits:
+            if limit.limit_type == PEBCPowerEnvelopeLimitType.LOWER_LIMIT:
+                lower_limits.append(limit.range_boundary)
+            else:
+                upper_limits.append(limit.range_boundary)
+
+        limit_range_pairs: List[Tuple[NumberRange, NumberRange]] = list(
+            product(lower_limits, upper_limits)
+        )
+        logger.info(limit_range_pairs)
+
+        for lower_limit, upper_limit in limit_range_pairs:
+
+            power_envelope = self.create_power_envelope(
+                commodity_quantity=commodity_quantity,
+                lower_limit=lower_limit.end_of_range,
+                upper_limit=upper_limit.start_of_range,
+                duration=duration,
+            )
+            logger.debug("Curtailing with power envelope: %s", power_envelope)
+
+            await self.send_power_envelope(power_envelope, InstructionStatus.SUCCEEDED)
+
+            power_envelope = self.create_power_envelope(
+                commodity_quantity=commodity_quantity,
+                lower_limit=lower_limit.end_of_range - 1,
+                upper_limit=upper_limit.start_of_range + 1,
+                duration=duration,
+            )
+
+            await self.send_power_envelope(power_envelope, InstructionStatus.REJECTED)
 
     @S2TestCase.test
     async def test_set_limit_ranges_instruction(self):

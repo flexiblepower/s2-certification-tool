@@ -74,7 +74,10 @@ class Channel(Generic[T, RawT], abc.ABC):
 
         await self.connection.close()
 
+        logger.info("Channel Run complete.")
+
     async def stop(self):
+        logger.info("Sopping Channel.")
         if not self._stop_event.is_set():
             self.message_queue.put_nowait(None)
             self._stop_event.set()
@@ -83,4 +86,3 @@ class Channel(Generic[T, RawT], abc.ABC):
 
 class BaseChannel(Channel[str, str]):
     """A str, str channel."""
-
