@@ -2,7 +2,7 @@
 device_details:
   name: Some Device
   manufacturer: ABCD
-mode: certification
+mode: testing
 certification:
   uri: ws://s2-self-cert-server:8000/
 connection:
