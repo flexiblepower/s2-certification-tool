@@ -8,22 +8,26 @@ import logging
 import logging.config
 
 from connectivity.config import Config, load_config
-from log import LOGGING_CONFIG
+from log import get_log_config
 from server import S2WebSocketClient, S2WebSocketServer
 from server_side_certification_orchestrator import CertificationTestExecutor
 from testsuites.certification_executor import AbstractCertificationExecutor
 from testsuites.test_executor import create_test_executor
 from testsuites.test_suite import TestLogger
 
-logging.config.dictConfig(LOGGING_CONFIG)
-
-logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser(prog="S2 Self Cert")
 parser.add_argument("config")
 parser.add_argument(
     "-o", "--output", default="cert.yaml", help="Output file for the certificate."
 )
+parser.add_argument(
+    "-l", "--log_file", default=None, help="Output file for the test suite logs."
+)
+
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_server_certification_executor(config: Config) -> CertificationTestExecutor:
@@ -35,6 +39,7 @@ def create_server_certification_executor(config: Config) -> CertificationTestExe
 async def main():
 
     args = parser.parse_args()
+    logging.config.dictConfig(get_log_config(args.log_file))
 
     config: Config = load_config(args.config)
 

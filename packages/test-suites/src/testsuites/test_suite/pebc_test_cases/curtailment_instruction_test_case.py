@@ -85,40 +85,20 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
             self.test_logger.error(
                 f"Curtailment Test {power_envelope.commodity_quantity}: No Instruction status received after sending curtailment for {status_update}."
             )
-            # self.add_finding_param(
-            #     name="InstructionStatusUpdate received.", status=ComplianceStatus.FAIL
-            # )
             return ComplianceStatus.FAIL
-        # self.add_finding_param(
-        #     name="InstructionStatusUpdate received.", status=ComplianceStatus.PASS
-        # )
 
         logger.info("Status Update: %s", status_update)
         # TODO: THis could break if multiple status updates are incoming...
         if status_update.instruction_id != instruction.id:
 
-            self.add_finding_param(
-                name="InstructionStatusUpdate instruction_id matches instruction's ID.",
-                status=ComplianceStatus.SOFT_FAIL,
-            )
             self.test_logger.soft_error(
                 "Curtailment Test {power_envelope.commodity_quantity}: InstructionStatusUpdate instruction_id does not matches instruction's ID."
             )
             return ComplianceStatus.SOFT_FAIL
 
-        self.add_finding_param(
-            name="InstructionStatusUpdate instruction_id matches instruction's ID.",
-            status=ComplianceStatus.PASS,
-        )
-
         if status_update.status_type != expected_instruction_status:
             self.test_logger.soft_error(
                 f"Curtailment Test {power_envelope.commodity_quantity}: Expected Instruction Status of {expected_instruction_status} but received {status_update.status_type}."
-            )
-            self.add_finding_param(
-                name="InstructionStatusUpdate status_type does not matches expected.",
-                detail=f"Received status {status_update.status_type} but expected {expected_instruction_status} for instruction.",
-                status=ComplianceStatus.SOFT_FAIL,
             )
             return ComplianceStatus.SOFT_FAIL
         return ComplianceStatus.PASS
@@ -177,7 +157,6 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
         limits: List[PEBCAllowedLimitRange],
         duration=3600,
     ) -> list[ComplianceStatus]:
-        logger.info(power_constraints.model_dump_json())
         logger.info("Curtailing %s", commodity_quantity)
 
         lower_limits: List[NumberRange] = []
@@ -231,3 +210,10 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
         self.test_logger.log_status_list(
             "Curtailment Instruction Test Complete.", statuses, ident=0
         )
+
+        if ComplianceStatus.FAIL in statuses:
+            self.finding.status = ComplianceStatus.FAIL
+        elif ComplianceStatus.SOFT_FAIL in statuses:
+            self.finding.status = ComplianceStatus.SOFT_FAIL
+        elif ComplianceStatus.PASS in statuses:
+            self.finding.status = ComplianceStatus.PASS
