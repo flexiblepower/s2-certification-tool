@@ -1,0 +1,33 @@
+---
+
+services:
+  s2-self-cert:
+    build:
+      dockerfile: ./docker/Dockerfile.client
+    command: python3 src/main.py /app/config.yaml -o /app/cert.yaml
+    ports:
+      - 8000:8000
+    volumes:
+      - ./s2-self-cert/src:/app/src
+      - ./s2-self-cert/config.yaml:/app/config.yaml
+      - ./s2-self-cert/cert.yaml:/app/cert.yaml
+      - ./packages:/packages
+    healthcheck:
+      test: [ "CMD-SHELL", "true" ]
+      interval: 0s
+      timeout: 0s
+      retries: 1
+      start_period: 1s
+  pv-installation:
+    image: docker.io/library/s2-example-implementations-pv-installation:latest
+    environment:
+      # Provide the URL to your CEM here; this should be a WebSocket endpoint
+      - CEM_URL=ws://s2-self-cert:8000
+      # - CEM_URL=ws://host.docker.internal:8001/backend/rm/pv1/cem/cem1/ws
+      # Supported values:
+      # - PEBC: PV installation that can curtail
+      # - NOT_CONTROLABLE: PV installation without the option to curtail
+      - CONTROL_TYPE=PEBC
+    depends_on:
+      s2-self-cert:
+        condition: service_healthy

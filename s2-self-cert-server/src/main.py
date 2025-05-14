@@ -1,6 +1,6 @@
 from importlib.metadata import version
 from typing import Optional
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 import asyncio
 from enum import Enum
 import json
@@ -35,8 +35,8 @@ from testsuites.envelope_models import (
 from connectivity.channel import Channel
 
 
-from log import LOGGING_CONFIG
-from ws_adapter import FastAPIWebSocketAdapter
+from .log import LOGGING_CONFIG
+from .ws_adapter import FastAPIWebSocketAdapter
 
 
 logging.config.dictConfig(LOGGING_CONFIG)
@@ -52,6 +52,11 @@ def verify_certificate(file: UploadFile):
         return {"valid": True}
     else:
         return {"valid": False}
+
+
+@app.get("/healthcheck")
+def healthcheck() -> dict[str, str]:
+    return {"status": "OK"}
 
 
 class MockConnectionAdapter(ConnectionAdapter):
@@ -192,7 +197,7 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
         return await super().run(s2_channel_mock, server_channel, *args, **kwargs)
 
 
-@app.websocket("/ws")
+@app.websocket("/")
 async def connect_tester(websocket: WebSocket):
     await websocket.accept()
     # The wrapper around the FastAPI websocket for consistency and reusability

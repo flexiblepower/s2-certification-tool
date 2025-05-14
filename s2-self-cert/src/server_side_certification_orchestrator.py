@@ -49,11 +49,6 @@ from importlib.metadata import version
 
 logger = logging.getLogger(__name__)
 
-SERVER_PROTOCOL = os.environ.get("CERTIFICATION_SERVER_PROTOCOL", "ws")
-SERVER_HOST = os.environ.get("CERTIFICATION_SERVER_HOST", "localhost")
-SERVER_PORT = os.environ.get("CERTIFICATION_SERVER_PORT", "8001")
-SERVER_PATH = os.environ.get("CERTIFICATION_SERVER_PORT", "/ws")
-
 
 class CertificationTestExecutor(AbstractCertificationExecutor):
     config: Config
@@ -76,7 +71,7 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
         self.report = report
 
     async def connect_to_server(self) -> Channel[ServerMessageEnvelope, str]:
-        uri = f"{SERVER_PROTOCOL}://{SERVER_HOST}:{SERVER_PORT}{SERVER_PATH}"
+        uri = self.config.certification.uri
         logger.info(f"Connecting to server ({uri})...")
 
         ws = await connect(uri)

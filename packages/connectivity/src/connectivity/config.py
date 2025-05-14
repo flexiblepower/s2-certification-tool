@@ -63,10 +63,15 @@ class ConnectionConfig(BaseModel):
         return values
 
 
+class CertificationConfig(BaseModel):
+    uri: str
+
+
 class Config(BaseModel):
     mode: Literal["testing", "certification"]
     connection: ConnectionConfig
-    device_details: Optional[DeviceDetails]
+    certification: Optional[CertificationConfig] = None
+    device_details: Optional[DeviceDetails] = None
     control_types: ControlTypeTestConfig
 
 
