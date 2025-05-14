@@ -7,9 +7,14 @@
 
 ## Getting started
 
-## Todo
-
 ## Development
+
+Currently this repository uses a custom version of the S2-Python library. It is in this repository as a Git Submodule. In order to clone the repo with the submodule please run:
+
+```bash
+git submodule init
+git submodule update --remote --merge
+```
 
 ### Executing with Hot Reload
 

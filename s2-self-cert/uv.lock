@@ -214,7 +214,6 @@ dependencies = [
     { name = "click" },
     { name = "pydantic" },
     { name = "pytz" },
-    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -239,9 +238,9 @@ requires-dist = [
     { name = "sphinxcontrib-httpdomain", marker = "extra == 'docs'" },
     { name = "tox", marker = "extra == 'development'" },
     { name = "types-pytz", marker = "extra == 'testing'" },
-    { name = "websockets", specifier = "~=13.1" },
+    { name = "websockets", marker = "extra == 'ws'", specifier = "~=13.1" },
 ]
-provides-extras = ["testing", "development", "docs"]
+provides-extras = ["ws", "testing", "development", "docs"]
 
 [[package]]
 name = "s2-self-cert"

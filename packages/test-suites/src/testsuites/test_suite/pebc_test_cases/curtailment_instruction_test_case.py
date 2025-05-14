@@ -59,8 +59,10 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
         )
 
     async def send_power_envelope(
-        self, power_envelope, expected_instruction_status: InstructionStatus
-    ):
+        self,
+        power_envelope: PEBCPowerEnvelope,
+        expected_instruction_status: InstructionStatus,
+    ) -> ComplianceStatus:
         # Prepare coroutines first so the events are waiting in the awaiter.
         # This avoids the case where the message somehow arrives between sending the message and starting to await.
         # This is highly unlikely but might as well make sure!
@@ -80,36 +82,93 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
         status_update = await status_update_coroutine
 
         if type(status_update) != InstructionStatusUpdate:
-            self.add_finding_param(
-                name="InstructionStatusUpdate received.", status=ComplianceStatus.FAIL
+            self.test_logger.error(
+                f"Curtailment Test {power_envelope.commodity_quantity}: No Instruction status received after sending curtailment for {status_update}."
             )
-            return
-        self.add_finding_param(
-            name="InstructionStatusUpdate received.", status=ComplianceStatus.PASS
-        )
+            # self.add_finding_param(
+            #     name="InstructionStatusUpdate received.", status=ComplianceStatus.FAIL
+            # )
+            return ComplianceStatus.FAIL
+        # self.add_finding_param(
+        #     name="InstructionStatusUpdate received.", status=ComplianceStatus.PASS
+        # )
 
         logger.info("Status Update: %s", status_update)
-        if status_update.instruction_id == instruction.id:
+        # TODO: THis could break if multiple status updates are incoming...
+        if status_update.instruction_id != instruction.id:
+
             self.add_finding_param(
                 name="InstructionStatusUpdate instruction_id matches instruction's ID.",
-                status=ComplianceStatus.PASS,
+                status=ComplianceStatus.SOFT_FAIL,
             )
-        else:
-            self.add_finding_param(
-                name="InstructionStatusUpdate instruction_id matches instruction's ID.",
-                status=ComplianceStatus.FAIL,
+            self.test_logger.soft_error(
+                "Curtailment Test {power_envelope.commodity_quantity}: InstructionStatusUpdate instruction_id does not matches instruction's ID."
             )
+            return ComplianceStatus.SOFT_FAIL
+
+        self.add_finding_param(
+            name="InstructionStatusUpdate instruction_id matches instruction's ID.",
+            status=ComplianceStatus.PASS,
+        )
 
         if status_update.status_type != expected_instruction_status:
+            self.test_logger.soft_error(
+                f"Curtailment Test {power_envelope.commodity_quantity}: Expected Instruction Status of {expected_instruction_status} but received {status_update.status_type}."
+            )
             self.add_finding_param(
                 name="InstructionStatusUpdate status_type does not matches expected.",
                 detail=f"Received status {status_update.status_type} but expected {expected_instruction_status} for instruction.",
                 status=ComplianceStatus.SOFT_FAIL,
             )
+            return ComplianceStatus.SOFT_FAIL
+        return ComplianceStatus.PASS
 
-        # message = await power_measurement_coroutine
+    async def curtail_with_limits(
+        self,
+        commodity_quantity: CommodityQuantity,
+        lower_limit: NumberRange,
+        upper_limit: NumberRange,
+        duration: int,
+    ) -> list[ComplianceStatus]:
+        limits = [
+            (lower_limit.start_of_range, upper_limit.start_of_range),
+            (lower_limit.start_of_range, upper_limit.end_of_range),
+            (lower_limit.end_of_range, upper_limit.start_of_range),
+            (lower_limit.end_of_range, upper_limit.end_of_range),
+        ]
 
-        # logger.info("Received Power Measurement: %s", message)
+        statuses = []
+        for upper, lower in limits:
+            power_envelope = self.create_power_envelope(
+                commodity_quantity=commodity_quantity,
+                lower_limit=lower,
+                upper_limit=upper,
+                duration=duration,
+            )
+            logger.debug("Curtailing with power envelope: %s", power_envelope)
+
+            self.test_logger.info(
+                f"Curtailing {power_envelope.commodity_quantity} with upper_limit={upper}, lower_limit={lower}"
+            )
+
+            status = await self.send_power_envelope(
+                power_envelope, InstructionStatus.SUCCEEDED
+            )
+            statuses.append(status)
+
+            power_envelope = self.create_power_envelope(
+                commodity_quantity=commodity_quantity,
+                lower_limit=lower_limit.end_of_range - 1,
+                upper_limit=upper_limit.start_of_range + 1,
+                duration=duration,
+            )
+
+            status = await self.send_power_envelope(
+                power_envelope, InstructionStatus.REJECTED
+            )
+            statuses.append(status)
+
+        return statuses
 
     async def curtail_commodity_quantity(
         self,
@@ -117,7 +176,7 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
         commodity_quantity: CommodityQuantity,
         limits: List[PEBCAllowedLimitRange],
         duration=3600,
-    ):
+    ) -> list[ComplianceStatus]:
         logger.info(power_constraints.model_dump_json())
         logger.info("Curtailing %s", commodity_quantity)
 
@@ -135,26 +194,13 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
         )
         logger.info(limit_range_pairs)
 
+        statuses = []
         for lower_limit, upper_limit in limit_range_pairs:
-
-            power_envelope = self.create_power_envelope(
-                commodity_quantity=commodity_quantity,
-                lower_limit=lower_limit.end_of_range,
-                upper_limit=upper_limit.start_of_range,
-                duration=duration,
-            )
-            logger.debug("Curtailing with power envelope: %s", power_envelope)
-
-            await self.send_power_envelope(power_envelope, InstructionStatus.SUCCEEDED)
-
-            power_envelope = self.create_power_envelope(
-                commodity_quantity=commodity_quantity,
-                lower_limit=lower_limit.end_of_range - 1,
-                upper_limit=upper_limit.start_of_range + 1,
-                duration=duration,
+            statuses += await self.curtail_with_limits(
+                commodity_quantity, lower_limit, upper_limit, duration
             )
 
-            await self.send_power_envelope(power_envelope, InstructionStatus.REJECTED)
+        return statuses
 
     @S2TestCase.test
     async def test_set_limit_ranges_instruction(self):
@@ -175,9 +221,13 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
             else:
                 limit_ranges[limit_range.commodity_quantity] = [limit_range]
 
+        statuses: List[ComplianceStatus] = []
         for commodity_quantity, ranges in limit_ranges.items():
-            await self.curtail_commodity_quantity(
+            statuses += await self.curtail_commodity_quantity(
                 power_constraints=power_constraints,
                 commodity_quantity=commodity_quantity,
                 limits=ranges,
             )
+        self.test_logger.log_status_list(
+            "Curtailment Instruction Test Complete.", statuses, ident=0
+        )

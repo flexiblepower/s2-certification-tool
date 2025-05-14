@@ -15,10 +15,48 @@ from connectivity.config import BaseTestConfig, ControlTypeTestConfig
 from testsuites.controllers.controller import Controller
 from s2python.common import ControlType as ProtocolControlType
 from s2python.message import S2Message
+from s2python.s2_validation_error import S2ValidationError
 
 from connectivity.s2_channel import S2Channel
 
 logger = logging.getLogger(__name__)
+
+
+class TestLogger:
+
+    logger: logging.Logger
+
+    def __init__(self, logger: logging.Logger):
+        self.logger = logger
+
+    def info(self, message, ident=2):
+        self.logger.info("%s[INFO] %s", " " * ident, message)
+
+    def success(self, message, ident=2):
+        self.logger.info("%s[SUCCESS] %s", " " * ident, message)
+
+    def soft_error(self, message, ident=2):
+        self.logger.warning("%s[SOFT-FAIL] %s", " " * ident, message)
+
+    def error(self, message, ident=2):
+        self.logger.warning("%s[FAIL] %s", " " * ident, message)
+
+    def log(self, message, status: ComplianceStatus = ComplianceStatus.PASS, ident=2):
+        match status:
+            case ComplianceStatus.PASS:
+                self.success(message, ident=ident)
+            case ComplianceStatus.SOFT_FAIL:
+                self.soft_error(message, ident=ident)
+            case ComplianceStatus.FAIL:
+                self.error(message, ident=ident)
+
+    def log_status_list(self, message, statuses: list[ComplianceStatus], ident=2):
+        if ComplianceStatus.FAIL in statuses:
+            self.error(message, ident=ident)
+        elif ComplianceStatus.SOFT_FAIL in statuses:
+            self.soft_error(message, ident=ident)
+        elif ComplianceStatus.PASS in statuses:
+            self.success(message, ident=ident)
 
 
 class S2TestCase(abc.ABC):
@@ -26,6 +64,8 @@ class S2TestCase(abc.ABC):
     config: BaseTestConfig
 
     finding: ComplianceFinding
+
+    test_logger: TestLogger
 
     TIMEOUT = 5
 
@@ -35,6 +75,7 @@ class S2TestCase(abc.ABC):
         channel: S2Channel,
         controller: Controller,
         report: ComplianceReport,
+        logger: TestLogger,
     ):
         self.channel = channel
         self.controller = controller
@@ -52,6 +93,10 @@ class S2TestCase(abc.ABC):
             raise ValueError(
                 "Finding must be declared as a constant for a test case class."
             )
+
+        self.test_logger = logger
+
+        self.test_logger.info(self.finding.test, ident=0)
 
     def add_finding_param(
         self,
@@ -99,6 +144,10 @@ class S2TestCase(abc.ABC):
 
         return message
 
+    def handle_validation_error(self, err: S2ValidationError):
+        self.test_logger.error(f"Received validation error: {err}")
+        pass
+
     @classmethod
     def test(cls, func):
         func._is_test_case = True
@@ -126,13 +175,14 @@ class S2TestCase(abc.ABC):
             len(self.get_test_cases()),
         )
         for name, method in self.get_test_cases():
-            logger.info(f"Running test case: {name}")
+            # self.logger.info(f"Running test case: {name}")
             await self.setup()
             try:
                 await method()
             finally:
                 await self.teardown()
-        logger.info("Test case %s complete.", self.__class__.__name__)
+        # self.logger.info("Test case %s complete.", self.__class__.__name__)
+        # self.logger.info("-" * 20)
 
 
 class TestSuite:
@@ -140,10 +190,19 @@ class TestSuite:
     test_cases: Dict[ProtocolControlType, List[Type[S2TestCase]]]
     report: ComplianceReport
 
-    def __init__(self, config: ControlTypeTestConfig, report: ComplianceReport):
+    test_logger: TestLogger
+
+    def __init__(
+        self,
+        config: ControlTypeTestConfig,
+        report: ComplianceReport,
+        test_logger: TestLogger,
+    ):
         self.test_cases = {}
         self.config = config
         self.report = report
+
+        self.test_logger = test_logger
 
     def add_test_case(self, test_case: Type[S2TestCase]):
         if test_case.control_type in self.test_cases:
@@ -153,12 +212,9 @@ class TestSuite:
 
     async def execute(self, channel: S2Channel, controller: Controller):
         control_type = controller.control_type
-        test_cases = self.test_cases.get(
-            ProtocolControlType.NO_SELECTION, []
-        )
+        test_cases = self.test_cases.get(ProtocolControlType.NO_SELECTION, [])
         test_cases += self.test_cases.get(control_type, [])
 
-        logger.info(self.test_cases)
         logger.info(
             "Executing test suite for %s control type. %s test cases to execute.",
             control_type,
@@ -171,6 +227,7 @@ class TestSuite:
                 channel,
                 controller,
                 self.report,
+                self.test_logger,
             )
             await test_case.execute()
 
@@ -178,8 +235,13 @@ class TestSuite:
 
 
 class TestSuiteBuilder:
-    def __init__(self, config: ControlTypeTestConfig, report: ComplianceReport):
-        self.test_suite = TestSuite(config, report)
+    def __init__(
+        self,
+        config: ControlTypeTestConfig,
+        report: ComplianceReport,
+        test_logger: TestLogger,
+    ):
+        self.test_suite = TestSuite(config, report, test_logger)
 
     def with_test_case(self, test_case):
         self.test_suite.add_test_case(test_case)

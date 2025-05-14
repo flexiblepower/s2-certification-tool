@@ -13,6 +13,7 @@ from server import S2WebSocketClient, S2WebSocketServer
 from server_side_certification_orchestrator import CertificationTestExecutor
 from testsuites.certification_executor import AbstractCertificationExecutor
 from testsuites.test_executor import create_test_executor
+from testsuites.test_suite import TestLogger
 
 logging.config.dictConfig(LOGGING_CONFIG)
 
@@ -40,7 +41,8 @@ async def main():
     if config.mode == "certification":
         test_executor = create_server_certification_executor(config)
     elif config.mode == "testing":
-        test_executor = create_test_executor(config, logger)
+        test_logger = TestLogger(logger=logging.getLogger("test-suite-logger"))
+        test_executor = create_test_executor(config, test_logger)
     else:
         raise ValueError("Invalid mode.")
 

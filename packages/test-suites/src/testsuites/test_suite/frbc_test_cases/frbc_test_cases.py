@@ -23,7 +23,7 @@ from testsuites.test_suite.test_suite import S2TestCase
 logger = logging.getLogger(__name__)
 
 
-class TestReceiveFRBCSystemDescription(FRBCTestCase):
+class FRBCSystemDescriptionTestCase(FRBCTestCase):
     finding = ComplianceFinding(test="Test receive FRBCSystemDescription")
 
     @S2TestCase.test
@@ -32,16 +32,20 @@ class TestReceiveFRBCSystemDescription(FRBCTestCase):
 
         message = await self.check_receive_message_type(FRBCSystemDescription)
 
+        self.test_logger.info("[SUCCESS] Test Receive FRBC System Description")
 
-class TEstReceiveActuatorStatus(FRBCTestCase):
+
+class FRBCActuatorStatusTestCase(FRBCTestCase):
     @S2TestCase.test
     async def test_receive_actuator_status(self):
         await self.wait_for_system_description()
 
         message = await self.check_receive_message_type(FRBCActuatorStatus)
 
+        self.test_logger.info("[SUCCESS] Test Receive FRBC Actuator Status")
 
-class TestReceiveStorageStatus(FRBCTestCase):
+
+class FRBCStorageStatusTestCase(FRBCTestCase):
     finding = ComplianceFinding(test="Test receive FRBCStorageStatus")
 
     @S2TestCase.test
@@ -50,8 +54,10 @@ class TestReceiveStorageStatus(FRBCTestCase):
 
         message = await self.check_receive_message_type(FRBCStorageStatus)
 
+        self.test_logger.info("[SUCCESS] Test Receive FRBC Storage Status")
 
-class TestReceiveUsageForecast(FRBCTestCase):
+
+class FRBCUsageForecastTestCase(FRBCTestCase):
     finding = ComplianceFinding(test="Test receive FRBCUsageForecast")
 
     @S2TestCase.test
@@ -59,3 +65,5 @@ class TestReceiveUsageForecast(FRBCTestCase):
         await self.wait_for_system_description()
 
         message = await self.check_receive_message_type(FRBCUsageForecast)
+
+        self.test_logger.info("[SUCCESS] Test Receive FRBC Usage Forecast")

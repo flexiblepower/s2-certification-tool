@@ -9,9 +9,8 @@ from s2python.message import S2Message
 
 
 from testsuites.certificate.certificate import ComplianceReport
-from testsuites.test_suite.test_suite import TestSuite, TestSuiteBuilder
+from testsuites.test_suite.test_suite import TestLogger, TestSuite, TestSuiteBuilder
 from testsuites.test_suite import (
-    FRBCTestCase,
     ReceivePowerMeasurementTestCase,
     ReceivePowerForecastTestCase,
 )
@@ -24,6 +23,12 @@ from testsuites.controllers import (
     BaseController,
     PEBCController,
     FRBCController,
+)
+from testsuites.test_suite.frbc_test_cases import (
+    FRBCActuatorStatusTestCase,
+    FRBCSystemDescriptionTestCase,
+    FRBCStorageStatusTestCase,
+    FRBCUsageForecastTestCase,
 )
 
 
@@ -64,17 +69,17 @@ class IntegrationTestExecutor(AbstractExecutor):
 
     report: ComplianceReport
 
+    test_logger: TestLogger
+
     _stop_event: asyncio.Event
     _handshake_complete: asyncio.Event
-
-    logger: logging.Logger
 
     def __init__(
         self,
         available_control_types: Dict[ProtocolControlType, Controller],
         test_suite: TestSuite,
         report: ComplianceReport,
-        logger: logging.Logger = logging.getLogger(__name__),
+        test_logger: TestLogger,
     ) -> None:
 
         self.controllers = available_control_types
@@ -88,7 +93,7 @@ class IntegrationTestExecutor(AbstractExecutor):
 
         self.report = report
 
-        self.logger = logger
+        self.test_logger = test_logger
 
         self._stop_event = asyncio.Event()
         self._handshake_complete = asyncio.Event()
@@ -123,11 +128,11 @@ class IntegrationTestExecutor(AbstractExecutor):
                 # logger.info(message)
                 await self.process_message(message)
         except asyncio.CancelledError:
-            self.logger.info("Message Channel cancelled.")
+            logger.info("Message Channel cancelled.")
         except ConnectionClosed:
             pass
         except Exception as e:
-            self.logger.exception("Message processor encountered an error: %s", e)
+            logger.exception("Message processor encountered an error: %s", e)
             await self.stop()
 
     async def execute_test_suite(self):
@@ -141,41 +146,39 @@ class IntegrationTestExecutor(AbstractExecutor):
             await self.test_suite.execute(self.channel, self.controller)
 
     async def main_loop(self):
-        self.logger.info("Starting Main Loop.")
+        logger.info("Starting Main Loop.")
         if self.channel is None:
             raise ValueError("Channel not set.")
-
+        self.test_logger.info("Test suite starting. ", ident=0)
         try:
             await self.controller.perform_handshake(self.channel)
 
             await self.controller.wait_until_rm_details_received()
 
-            self.logger.info("Handshake Complete!")
+            self.test_logger.success("Handshake Complete", ident=0)
 
             await self.send_select_control_type()
 
-            self.logger.info("Starting tests!")
-
             await self.execute_test_suite()
 
-            self.logger.info("Sending graceful disconnect.")
             await self.controller.perform_disconnect(self.channel)
+            self.test_logger.success("Sent Graceful Disconnect..", ident=0)
 
-            self.logger.info("Exiting Main Loop.")
+            logger.info("Exiting Test Executor Main Loop.")
         except asyncio.CancelledError:
-            self.logger.warning("Main loop was cancelled.")
+            logger.warning("Main loop was cancelled.")
             raise  # Propagate for TaskGroup
         except Exception as e:
-            self.logger.exception("Exception in main_loop: %s", e)
+            logger.exception("Exception in main_loop: %s", e)
             await self.stop()
             raise
         finally:
-            self.logger.info("Main loop finished. Signaling stop.")
+            self.test_logger.info("Main loop finished. Signaling stop.", ident=0)
             await self.stop()
 
     async def send_select_control_type(self):
         # TODO: Select the control type in a better way.
-        self.logger.info("Selecting Control Type.")
+        logger.info("Selecting Control Type.")
         if (
             self.controller.resource_manager_details is None
             or self.controller.resource_manager_details.available_control_types is None
@@ -202,20 +205,24 @@ class IntegrationTestExecutor(AbstractExecutor):
             # )
 
         if control_type is None:
-            self.logger.warning("No suitable control types available. Exiting...")
+            self.test_logger.error(
+                "Select Control Type Failed. No suitable control type available.",
+                ident=0,
+            )
             await self.stop()
             return
 
-        self.logger.info("Selecting control type %s", control_type)
         self.set_control_type(control_type)
 
         await self.controller.select_control_type(self.channel)
+
+        self.test_logger.success(f"Control Type Selection. Selected: {control_type}")
 
     def is_running(self):
         return self.running
 
     async def stop(self):
-        self.logger.debug("Stop Called in class %s", self.__class__.__name__)
+        logger.debug("Stop Called in class %s", self.__class__.__name__)
         self._stop_event.set()
 
         if self.channel is not None:
@@ -253,7 +260,7 @@ class IntegrationTestExecutor(AbstractExecutor):
             async with asyncio.TaskGroup() as tg:
 
                 if self.channel is None:
-                    self.logger.error(
+                    logger.error(
                         "Channel not initialized before run, cannot start channel.run task."
                     )
                     await self.stop()
@@ -265,16 +272,14 @@ class IntegrationTestExecutor(AbstractExecutor):
                 tg.create_task(self.process_received_messages(), name="MessageProcess")
                 tg.create_task(self.main_loop(), name="MainLoop")
 
-                self.logger.info(
-                    "IntegrationTestExecutor TaskGroup completed successfully."
-                )
+                logger.info("IntegrationTestExecutor TaskGroup completed successfully.")
 
         except* Exception as eg:  # Catches one or more exceptions from tasks
-            self.logger.error(
+            logger.error(
                 f"ExceptionGroup caught in IntegrationTestExecutor run: {len(eg.exceptions)} exceptions"
             )
             for i, exc in enumerate(eg.exceptions):
-                self.logger.error(
+                logger.error(
                     f"  Exception {i+1}/{len(eg.exceptions)} in TaskGroup:",
                     exc_info=exc,
                 )
@@ -283,9 +288,9 @@ class IntegrationTestExecutor(AbstractExecutor):
         #     logger.warning("IntegrationTestExecutor run method was cancelled externally.")
         #     self.stop()
         finally:
-            self.logger.info("IntegrationTestExecutor run method finishing.")
+            logger.info("IntegrationTestExecutor run method finishing.")
             await self.cleanup()  # Perform final cleanup (e.g., channel.stop())
-            self.logger.info("Cleanup finished.")
+            logger.info("Cleanup finished.")
             self.running = False
 
 
@@ -306,19 +311,22 @@ def create_controllers_dict_with_config(
 
 
 def create_test_executor(
-    config: Config, logger: logging.Logger
+    config: Config, test_logger: TestLogger
 ) -> IntegrationTestExecutor:
     report = ComplianceReport(timestamp=datetime.now(), device=config.device_details)
 
     controllers = create_controllers_dict_with_config(config)
 
     test_suite = (
-        TestSuiteBuilder(config.control_types, report)
+        TestSuiteBuilder(config.control_types, report, test_logger)
         .with_test_case(ReceivePowerForecastTestCase)
         .with_test_case(ReceivePowerMeasurementTestCase)
         .with_test_case(PEBCPowerConstraintsTestCase)
         .with_test_case(PEBCCurtailmentInstructionTestCase)
-        .with_test_case(FRBCTestCase)
+        .with_test_case(FRBCUsageForecastTestCase)
+        .with_test_case(FRBCActuatorStatusTestCase)
+        .with_test_case(FRBCSystemDescriptionTestCase)
+        .with_test_case(FRBCStorageStatusTestCase)
         .build()
     )
 
@@ -326,7 +334,7 @@ def create_test_executor(
         available_control_types=controllers,
         test_suite=test_suite,
         report=report,
-        logger=logger,
+        test_logger=test_logger,
     )
 
     return executor

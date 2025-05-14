@@ -40,8 +40,9 @@ class FRBCTestCase(NoSelectionTestCase):
         channel: S2Channel,
         controller: FRBCController,
         report: ComplianceReport,
+        logger: logging.Logger = logging.getLogger(__name__),
     ):
-        super().__init__(config, channel, controller, report)
+        super().__init__(config, channel, controller, report, logger)
 
     async def setup(self):
         await self.controller._system_description_received.wait()

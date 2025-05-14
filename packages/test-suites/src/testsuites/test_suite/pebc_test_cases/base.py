@@ -21,15 +21,15 @@ class PEBCTestCase(NoSelectionTestCase):
     controller: PEBCController
     config: PEBCTestConfig
 
-
     def __init__(
         self,
         config: PEBCTestConfig,
         channel: S2Channel,
         controller: PEBCController,
         report: ComplianceReport,
+        logger: logging.Logger = logging.getLogger(__name__),
     ):
-        super().__init__(config, channel, controller, report)
+        super().__init__(config, channel, controller, report, logger)
 
     async def setup(self):
         await self.controller._power_constraints_received.wait()
