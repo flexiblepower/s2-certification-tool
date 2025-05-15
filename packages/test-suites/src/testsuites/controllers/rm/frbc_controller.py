@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 from s2python.common import ControlType as ProtocolControlType
 from s2python.frbc import FRBCSystemDescription
-from .controller import BaseController
+from .base import BaseRMController
 
 
 from connectivity.s2_channel import S2Channel
@@ -11,7 +11,7 @@ from connectivity.s2_channel import S2Channel
 logger = logging.getLogger(__name__)
 
 
-class FRBCController(BaseController):
+class FRBCRMController(BaseRMController):
     control_type = ProtocolControlType.FILL_RATE_BASED_CONTROL
     system_description: Optional[FRBCSystemDescription] = None
 

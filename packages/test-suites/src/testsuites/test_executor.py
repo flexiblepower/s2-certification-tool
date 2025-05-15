@@ -2,12 +2,27 @@ import abc
 import asyncio
 from datetime import datetime
 import logging
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
+import uuid
 
-from s2python.common import ControlType as ProtocolControlType
+from s2python.common import (
+    ControlType as ProtocolControlType,
+    EnergyManagementRole,
+    Handshake,
+    ResourceManagerDetails,
+    CommodityQuantity,
+    Currency,
+    Duration,
+    Role,
+    RoleType,
+    Commodity,
+    SelectControlType,
+)
 from s2python.message import S2Message
 
 
+from testsuites.message_handlers import send_okay_message
+from testsuites.util import wait_for_event_or_stop
 from testsuites.certificate.certificate import ComplianceReport
 from testsuites.test_suite.test_suite import TestLogger, TestSuite, TestSuiteBuilder
 from testsuites.test_suite import (
@@ -20,9 +35,10 @@ from testsuites.test_suite.pebc_test_cases import (
 )
 from testsuites.controllers import (
     Controller,
-    BaseController,
-    PEBCController,
-    FRBCController,
+    BaseRMController,
+    BaseCEMController,
+    PEBCRMController,
+    FRBCRMController,
 )
 from testsuites.test_suite.frbc_test_cases import (
     FRBCActuatorStatusTestCase,
@@ -32,9 +48,12 @@ from testsuites.test_suite.frbc_test_cases import (
 )
 
 
-from connectivity.async_task_manager import AsyncTaskManager
 from connectivity.s2_channel import S2Channel
-from connectivity.config import Config
+from connectivity.config import (
+    Config,
+    ControlTypeRMTestConfig,
+    ControlTypeCEMTestConfig,
+)
 from connectivity.connection_adapter import ConnectionClosed, ConnectionError
 
 
@@ -57,10 +76,10 @@ class AbstractExecutor(abc.ABC):
         pass
 
 
-class IntegrationTestExecutor(AbstractExecutor):
-
-    # The channel which connects to the S2 RM.
+class AbstractRoleExecutor(abc.ABC):
+    # In the role executor the channel is only used for sending messages. Receiving messages handled by IntegrationTestExecutor.
     channel: Optional["S2Channel"] = None
+    role: EnergyManagementRole
 
     controller: Controller
     controllers: Dict[ProtocolControlType, Controller]
@@ -68,11 +87,9 @@ class IntegrationTestExecutor(AbstractExecutor):
     test_suite: TestSuite
 
     report: ComplianceReport
-
     test_logger: TestLogger
 
-    _stop_event: asyncio.Event
-    _handshake_complete: asyncio.Event
+    _main_loop_started_event: asyncio.Event
 
     def __init__(
         self,
@@ -95,10 +112,13 @@ class IntegrationTestExecutor(AbstractExecutor):
 
         self.test_logger = test_logger
 
-        self._stop_event = asyncio.Event()
         self._handshake_complete = asyncio.Event()
+        self._main_loop_started_event = asyncio.Event()
 
-        self.running = False
+    async def run(self, channel: S2Channel, *args, **kwargs):
+        self.channel = channel
+
+        await self.main_loop()
 
     def set_control_type(self, control_type: ProtocolControlType):
         controller = self.controllers[control_type]
@@ -107,33 +127,19 @@ class IntegrationTestExecutor(AbstractExecutor):
         self.controller = controller
 
     async def process_message(self, message: S2Message):
+        # This is just to make sure that the channel is set before any messages are processed
+        await self._main_loop_started_event.wait()
         await self.controller.handle_message(message, self.channel)
 
-    async def process_received_messages(self):
-        """AsyncIO task which pops messages off the queue and processes them using the control type."""
+    @abc.abstractmethod
+    async def main_loop(self):
+        self._main_loop_started_event.set()
+        pass
 
-        if self.channel is None:
-            raise ValueError("Channel not set.")
 
-        try:
-            while not self._stop_event.is_set():
-                try:
-                    # Use a timeout to periodically check for cancellation
-                    message = await asyncio.wait_for(
-                        self.channel.get_next_message(), timeout=1.0
-                    )
-                except asyncio.TimeoutError:
-                    continue  # Check stop event and loop again
-
-                # logger.info(message)
-                await self.process_message(message)
-        except asyncio.CancelledError:
-            logger.info("Message Channel cancelled.")
-        except ConnectionClosed:
-            pass
-        except Exception as e:
-            logger.exception("Message processor encountered an error: %s", e)
-            await self.stop()
+class RMTestExecutor(AbstractRoleExecutor):
+    role = EnergyManagementRole.RM
+    controller: BaseRMController
 
     async def execute_test_suite(self):
         # Wait until the handshake is complete before starting the testing.
@@ -143,12 +149,14 @@ class IntegrationTestExecutor(AbstractExecutor):
             raise ValueError("Channel not set.")
 
         if self.controller:
-            await self.test_suite.execute(self.channel, self.controller)
+            await self.test_suite.execute(self.channel, self.controller, self.role)
 
     async def main_loop(self):
-        logger.info("Starting Main Loop.")
+        await super().main_loop()
+        logger.info("Starting Main Loop for RM Test Executor.")
         if self.channel is None:
             raise ValueError("Channel not set.")
+
         self.test_logger.info("Test suite starting. ", ident=0)
         try:
             await self.controller.perform_handshake(self.channel)
@@ -170,11 +178,9 @@ class IntegrationTestExecutor(AbstractExecutor):
             raise  # Propagate for TaskGroup
         except Exception as e:
             logger.exception("Exception in main_loop: %s", e)
-            await self.stop()
             raise
         finally:
             self.test_logger.info("Main loop finished. Signaling stop.", ident=0)
-            await self.stop()
 
     async def send_select_control_type(self):
         # TODO: Select the control type in a better way.
@@ -209,14 +215,119 @@ class IntegrationTestExecutor(AbstractExecutor):
                 "Select Control Type Failed. No suitable control type available.",
                 ident=0,
             )
-            await self.stop()
-            return
+            raise Exception("No suitable control types available.")
 
         self.set_control_type(control_type)
 
         await self.controller.select_control_type(self.channel)
 
         self.test_logger.success(f"Control Type Selection. Selected: {control_type}")
+
+
+class CEMTestExecutor(AbstractRoleExecutor):
+    role = EnergyManagementRole.CEM
+    controller: BaseCEMController
+
+    async def handle_select_control_type(self, message: SelectControlType):
+        control_type = message.control_type
+
+        try:
+            self.set_control_type(control_type)
+        except KeyError:
+            raise ValueError("Invalid control type selection...")
+
+    def process_message(self, message: S2Message):
+        if type(message) == SelectControlType:
+            await self.handle_select_control_type(message)
+        return super().process_message(message)
+
+    async def main_loop(self):
+        logger.info("Starting Main Loop for CEM Test Executor.")
+
+        if self.channel is None:
+            raise ValueError("Channel not set.")
+
+        self.test_logger.info("Test suite starting. ", ident=0)
+
+        await self.controller.perform_handshake(self.channel)
+
+
+class IntegrationTestExecutor(AbstractExecutor):
+    """
+    Waits for a handshake message to be received and based on the Role value chooses the correct
+    RoleExecutor. From that point onwards all messages are passed straight to the role executor.
+    The main method of the role executor is executed.
+    """
+
+    # The channel which connects to the S2 RM.
+    channel: Optional["S2Channel"] = None
+
+    executor: AbstractRoleExecutor | None = None
+    role_executors: Dict[EnergyManagementRole, AbstractRoleExecutor]
+
+    _stop_event: asyncio.Event
+
+    _select_role_executor = asyncio.Event()
+
+    def __init__(
+        self,
+        role_executors: Dict[EnergyManagementRole, AbstractRoleExecutor],
+    ) -> None:
+
+        self.role_executors = role_executors
+
+        self._stop_event = asyncio.Event()
+        self._select_role_executor = asyncio.Event()
+
+        self.running = False
+
+    async def handle_handshake(self, message: Handshake):
+        # On handshake we select the executor based on the role of the connected device.
+        role = message.role
+
+        self.executor = self.role_executors[role]
+
+        # Setting this will allow the main_loop to proceed
+        self._select_role_executor.set()
+
+    async def process_message(self, message: S2Message):
+
+        if type(message) == Handshake:
+            await self.handle_handshake(message)
+
+        # Handle the incoming message with the selected executor
+        if self.executor is not None:
+            await self.executor.process_message(message)
+        else:
+            raise ValueError(
+                f"Message of type {message.message_type} received before Handshake."
+            )
+
+    async def process_received_messages(self):
+        """AsyncIO task which pops messages off the queue and processes them using the control type."""
+
+        if self.channel is None:
+            raise ValueError("Channel not set.")
+
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    # Use a timeout to periodically check for cancellation
+                    message = await asyncio.wait_for(
+                        self.channel.get_next_message(), timeout=1.0
+                    )
+                except asyncio.TimeoutError:
+                    continue  # Check stop event and loop again
+
+                # logger.info(message)
+                await self.process_message(message)
+        except asyncio.CancelledError:
+            logger.info("Message Channel cancelled.")
+        except ConnectionClosed:
+            pass
+        except Exception as e:
+            logger.exception("Message processor encountered an error: %s", e)
+            await self.stop()
 
     def is_running(self):
         return self.running
@@ -232,12 +343,7 @@ class IntegrationTestExecutor(AbstractExecutor):
         self.channel = channel
 
         self._stop_event.clear()
-        self._handshake_complete.clear()
-
-        # self.create_task(self.main_loop(), True)
-
-        # self.create_task(self.channel.run(), True)
-        # self.create_task(self.process_received_messages(), True)
+        self._select_role_executor.clear()
 
     async def cleanup(self, *args, **kwargs):
         pass
@@ -251,6 +357,15 @@ class IntegrationTestExecutor(AbstractExecutor):
             await self.stop()
         except ConnectionError:
             await self.stop()
+
+    async def main_loop(self):
+        # Wait until the initial handshake message has been received to set role executor.
+        await wait_for_event_or_stop(self._select_role_executor, self._stop_event)
+
+        if self.executor is not None and self.channel is not None:
+            await self.executor.run(self.channel)
+        else:
+            raise ValueError("Unable to run role executor main loop.")
 
     async def run(self, *args, **kwargs):
         self.running = True
@@ -267,8 +382,7 @@ class IntegrationTestExecutor(AbstractExecutor):
                     self.running = False
                     return
 
-                # TODO: Should this use `run_channel()`?
-                tg.create_task(self.channel.run(), name="ChannelRun")
+                tg.create_task(self.run_channel(), name="ChannelRun")
                 tg.create_task(self.process_received_messages(), name="MessageProcess")
                 tg.create_task(self.main_loop(), name="MainLoop")
 
@@ -294,18 +408,52 @@ class IntegrationTestExecutor(AbstractExecutor):
             self.running = False
 
 
-def create_controllers_dict_with_config(
-    config: Config,
+def create_rm_controllers_dict_with_config(
+    config: ControlTypeRMTestConfig,
 ) -> Dict[ProtocolControlType, Controller]:
     controllers: Dict[ProtocolControlType, Controller] = {}
 
-    controllers[ProtocolControlType.NO_SELECTION] = BaseController()
+    controllers[ProtocolControlType.NO_SELECTION] = BaseRMController()
 
-    if config.control_types.frbc and config.control_types.frbc.enabled:
-        controllers[ProtocolControlType.FILL_RATE_BASED_CONTROL] = FRBCController()
+    if config.frbc and config.frbc.enabled:
+        controllers[ProtocolControlType.FILL_RATE_BASED_CONTROL] = FRBCRMController()
 
-    if config.control_types.pebc and config.control_types.pebc.enabled:
-        controllers[ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL] = PEBCController()
+    if config.pebc and config.pebc.enabled:
+        controllers[ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL] = (
+            PEBCRMController()
+        )
+
+    return controllers
+
+
+def create_cem_controllers_dict_with_config(
+    config: ControlTypeCEMTestConfig,
+) -> Dict[ProtocolControlType, Controller]:
+    controllers: Dict[ProtocolControlType, Controller] = {}
+
+    controllers[ProtocolControlType.NO_SELECTION] = BaseCEMController(
+        # TODO: More details should come from config.
+        ResourceManagerDetails(
+            available_control_types=config.get_enabled_control_types(),
+            roles=[
+                Role(
+                    role=RoleType.ENERGY_PRODUCER,
+                    commodity=Commodity.ELECTRICITY,
+                )
+            ],
+            name="TEST RM",
+            manufacturer="TEST",
+            model="TEST",
+            firmware_version="0",
+            currency=Currency.EUR,
+            message_id=uuid.uuid4(),
+            provides_forecast=True,
+            provides_power_measurement_types=[CommodityQuantity.ELECTRIC_POWER_L1],
+            resource_id=uuid.uuid4(),
+            serial_number="00000",
+            instruction_processing_delay=Duration(0),
+        )
+    )
 
     return controllers
 
@@ -315,26 +463,43 @@ def create_test_executor(
 ) -> IntegrationTestExecutor:
     report = ComplianceReport(timestamp=datetime.now(), device=config.device_details)
 
-    controllers = create_controllers_dict_with_config(config)
-
-    test_suite = (
-        TestSuiteBuilder(config.control_types, report, test_logger)
+    rm_controllers = create_rm_controllers_dict_with_config(config.roles.rm)
+    rm_test_suite = (
+        TestSuiteBuilder(config.roles, report, test_logger)
+        # Not Controllable Test Cases
         .with_test_case(ReceivePowerForecastTestCase)
         .with_test_case(ReceivePowerMeasurementTestCase)
+        # PEBC Test Cases
         .with_test_case(PEBCPowerConstraintsTestCase)
         .with_test_case(PEBCCurtailmentInstructionTestCase)
+        # FRBC Test Cases
         .with_test_case(FRBCUsageForecastTestCase)
         .with_test_case(FRBCActuatorStatusTestCase)
         .with_test_case(FRBCSystemDescriptionTestCase)
         .with_test_case(FRBCStorageStatusTestCase)
         .build()
     )
-
-    executor = IntegrationTestExecutor(
-        available_control_types=controllers,
-        test_suite=test_suite,
+    rm_role_executor = RMTestExecutor(
+        available_control_types=rm_controllers,
+        test_suite=rm_test_suite,
         report=report,
         test_logger=test_logger,
     )
+
+    cem_controllers = create_cem_controllers_dict_with_config(config.roles.cem)
+    cem_test_suite = TestSuiteBuilder(config.roles, report, test_logger).build()
+    cem_role_executor = CEMTestExecutor(
+        available_control_types=cem_controllers,
+        test_suite=cem_test_suite,
+        report=report,
+        test_logger=test_logger,
+    )
+
+    role_executors: Dict[EnergyManagementRole, AbstractRoleExecutor] = {
+        EnergyManagementRole.RM: rm_role_executor,
+        EnergyManagementRole.CEM: cem_role_executor,
+    }
+
+    executor = IntegrationTestExecutor(role_executors=role_executors)
 
     return executor

@@ -1,0 +1,34 @@
+from pydantic import BaseModel
+from .base import BaseTestConfig
+from typing import Dict, Optional
+from s2python.common import ControlType as ProtocolControlType, EnergyManagementRole
+
+
+class NoSelectionCEMTestConfig(BaseTestConfig):
+    pass
+
+
+class PEBCCEMTestConfig(BaseTestConfig):
+    pass
+
+
+class ControlTypeCEMTestConfig(BaseModel):
+    enabled: bool = True
+    role: EnergyManagementRole = EnergyManagementRole.CEM
+
+    pebc: Optional[PEBCCEMTestConfig]
+
+    def get_controller_configs_dics(
+        self,
+    ) -> Dict[ProtocolControlType, BaseTestConfig | None]:
+        return {ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL: self.pebc}
+
+    def get_control_type_config(self, control_type: ProtocolControlType):
+        return self.get_controller_configs_dics()[control_type]
+
+    def get_enabled_control_types(self):
+        control_types = []
+        for control_type, config in self.get_controller_configs_dics().items():
+            if config is not None and config.enabled:
+                control_types.append(control_type)
+        return control_types

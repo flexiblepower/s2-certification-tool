@@ -3,8 +3,8 @@ from ..certificate.certificate import (
     ComplianceReport,
     ComplianceStatus,
 )
-from ..controllers.controller import BaseController
-from ..test_suite.test_suite import S2TestCase, TestLogger
+from testsuites.controllers import BaseRMController
+from testsuites.test_suite.test_suite import S2TestCase, TestLogger
 
 from s2python.common import (
     PowerForecast,
@@ -26,14 +26,14 @@ class NoSelectionTestCase(S2TestCase):
 
     TIMEOUT = 5
 
-    controller: BaseController
+    controller: BaseRMController
     config: BaseTestConfig
 
     def __init__(
         self,
         config: BaseTestConfig,
         channel: S2Channel,
-        controller: BaseController,
+        controller: BaseRMController,
         report: ComplianceReport,
         logger: TestLogger,
     ):

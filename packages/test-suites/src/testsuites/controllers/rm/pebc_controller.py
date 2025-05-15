@@ -1,7 +1,6 @@
 import asyncio
 import datetime
-import json
-from typing import TYPE_CHECKING, Awaitable, List, Optional
+from typing import Awaitable, List, Optional
 import uuid
 
 from s2python.common import ControlType as ProtocolControlType, InstructionStatusUpdate
@@ -11,7 +10,7 @@ from s2python.pebc import (
     PEBCInstruction,
     PEBCPowerEnvelope,
 )
-from .controller import BaseController
+from .base import BaseRMController
 from connectivity.s2_channel import S2Channel
 
 import logging
@@ -19,7 +18,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class PEBCController(BaseController):
+class PEBCRMController(BaseRMController):
     control_type = ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL
     power_constraints: Optional[PEBCPowerConstraints] = None
 
@@ -41,10 +40,6 @@ class PEBCController(BaseController):
         channel: "S2Channel",
         send_okay: Awaitable,
     ):
-        # logger.info("Received power constraints.")
-        # logger.info("----------------------------------------------")
-        # logger.info(json.dumps(message.model_dump(), default=str, indent=2))
-        # logger.info("----------------------------------------------")
         self.power_constraints = message
         self._power_constraints_received.set()
 

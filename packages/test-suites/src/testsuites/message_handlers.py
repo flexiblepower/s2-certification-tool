@@ -60,6 +60,12 @@ class S2MessageAwaiter:
         #     )
 
 
+async def send_okay_message(channel: S2Channel, message: S2Message):
+    send_okay = SendOkay(channel, message.message_id)  # type: ignore[attr-defined, union-attr]
+    await send_okay.run_async()
+    await send_okay.ensure_send_async(type(message))
+
+
 class MessageHandler:
     handlers: Dict[Type[S2Message], Callable]
 

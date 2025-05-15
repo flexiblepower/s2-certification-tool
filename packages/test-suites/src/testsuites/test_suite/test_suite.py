@@ -11,9 +11,9 @@ from testsuites.certificate.certificate import (
     ComplianceReport,
     ComplianceStatus,
 )
-from connectivity.config import BaseTestConfig, ControlTypeTestConfig
+from connectivity.config import BaseTestConfig, ControlTypeRMTestConfig, RoleTestConfig
 from testsuites.controllers.controller import Controller
-from s2python.common import ControlType as ProtocolControlType
+from s2python.common import ControlType as ProtocolControlType, EnergyManagementRole
 from s2python.message import S2Message
 from s2python.s2_validation_error import S2ValidationError
 
@@ -186,7 +186,7 @@ class S2TestCase(abc.ABC):
 
 
 class TestSuite:
-    config: ControlTypeTestConfig
+    config: RoleTestConfig
     test_cases: Dict[ProtocolControlType, List[Type[S2TestCase]]]
     report: ComplianceReport
 
@@ -194,7 +194,7 @@ class TestSuite:
 
     def __init__(
         self,
-        config: ControlTypeTestConfig,
+        config: RoleTestConfig,
         report: ComplianceReport,
         test_logger: TestLogger,
     ):
@@ -210,7 +210,9 @@ class TestSuite:
         else:
             self.test_cases[test_case.control_type] = [test_case]
 
-    async def execute(self, channel: S2Channel, controller: Controller):
+    async def execute(
+        self, channel: S2Channel, controller: Controller, role: EnergyManagementRole
+    ):
         control_type = controller.control_type
         test_cases = self.test_cases.get(ProtocolControlType.NO_SELECTION, [])
         test_cases += self.test_cases.get(control_type, [])
@@ -223,7 +225,7 @@ class TestSuite:
         for TestCase in test_cases:
             control_type = TestCase.control_type
             test_case = TestCase(
-                self.config.get_control_type_config(control_type),
+                self.config.get_control_type_config(role, control_type),
                 channel,
                 controller,
                 self.report,
@@ -237,7 +239,7 @@ class TestSuite:
 class TestSuiteBuilder:
     def __init__(
         self,
-        config: ControlTypeTestConfig,
+        config: RoleTestConfig,
         report: ComplianceReport,
         test_logger: TestLogger,
     ):

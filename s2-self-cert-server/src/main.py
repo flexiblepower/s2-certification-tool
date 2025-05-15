@@ -8,7 +8,6 @@ import logging
 import logging.config
 from connectivity.connection_adapter import ConnectionAdapter
 from fastapi import UploadFile, WebSocket
-from fastapi import WebSocketDisconnect
 from testsuites.certification_executor import AbstractCertificationExecutor
 from connectivity.config import Config
 from testsuites.server_websocket_envelope_channel import (
@@ -16,6 +15,7 @@ from testsuites.server_websocket_envelope_channel import (
 )
 from connectivity.s2_channel import S2Channel
 from testsuites.test_executor import IntegrationTestExecutor, create_test_executor
+from testsuites.certificate.certificate import ComplianceReport
 
 
 from testsuites.envelope_models import (
@@ -97,9 +97,6 @@ class MockChannel(Channel[str, str]):
 
     async def receive(self) -> str:
         return await self.connection.get_next_outgoing()
-
-
-from testsuites.certificate.certificate import ComplianceReport
 
 
 class ServerSideCertificationExecutor(AbstractCertificationExecutor):

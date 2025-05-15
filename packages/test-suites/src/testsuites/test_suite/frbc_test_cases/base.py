@@ -9,8 +9,8 @@ from testsuites.certificate.certificate import (
     ComplianceReport,
     ComplianceStatus,
 )
-from connectivity.config import FRBCTestConfig, PEBCTestConfig
-from testsuites.controllers.frbc_controller import FRBCController
+from connectivity.config import FRBCRMTestConfig, PEBCRMTestConfig
+from testsuites.controllers import FRBCRMController
 from s2python.common import PowerMeasurement, ControlType as ProtocolControlType
 from s2python.frbc import (
     FRBCActuatorStatus,
@@ -20,7 +20,7 @@ from s2python.frbc import (
     FRBCUsageForecast,
 )
 from testsuites.test_suite.base_test_case import NoSelectionTestCase
-from testsuites.test_suite.test_suite import S2TestCase
+from testsuites.test_suite.test_suite import S2TestCase, TestLogger
 from connectivity.s2_channel import S2Channel
 
 logger = logging.getLogger(__name__)
@@ -31,16 +31,16 @@ class FRBCTestCase(NoSelectionTestCase):
 
     TIMEOUT = 5
 
-    controller: FRBCController
-    config: FRBCTestConfig
+    controller: FRBCRMController
+    config: FRBCRMTestConfig
 
     def __init__(
         self,
-        config: FRBCTestConfig,
+        config: FRBCRMTestConfig,
         channel: S2Channel,
-        controller: FRBCController,
+        controller: FRBCRMController,
         report: ComplianceReport,
-        logger: logging.Logger = logging.getLogger(__name__),
+        logger: TestLogger
     ):
         super().__init__(config, channel, controller, report, logger)
 

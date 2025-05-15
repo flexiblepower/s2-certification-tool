@@ -11,9 +11,9 @@ from testsuites.certificate.certificate import (
     ComplianceReport,
     ComplianceStatus,
 )
-from connectivity.config import BaseTestConfig, PEBCTestConfig
+from connectivity.config import BaseTestConfig, PEBCRMTestConfig
 from testsuites.controllers.controller import Controller
-from testsuites.controllers.pebc_controller import PEBCController
+from testsuites.controllers import PEBCRMController
 from s2python.common import (
     ControlType as ProtocolControlType,
     PowerMeasurement,
