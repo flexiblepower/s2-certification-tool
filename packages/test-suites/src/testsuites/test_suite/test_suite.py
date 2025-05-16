@@ -71,7 +71,7 @@ class S2TestCase(unittest.TestCase):
 
     TIMEOUT = 5
 
-    tests: List[Tuple[str, Callable, Tuple, Dict]]
+    tests: List[Tuple[str, Callable, Tuple, Dict, TestResultStatus]]
 
     def __init__(
         self,
@@ -79,7 +79,7 @@ class S2TestCase(unittest.TestCase):
         channel: S2Channel,
         controller: Controller,
         report: ComplianceReport,
-        logger1: TestLogger,
+        logger: TestLogger,
     ):
         super().__init__()
         self.channel = channel
@@ -87,24 +87,22 @@ class S2TestCase(unittest.TestCase):
         self.config = config
         self.report = report
 
-        name_set = True
         try:
             if self.name is None:
-                name_set = False
+                raise Exception()
         except:
-            name_set = False
-
-        if not name_set:
             raise ValueError(
                 f"Test case name must be declared as a constant for a test case class ({self.__class__})"
             )
 
-        self.tests: List[Tuple[str, Callable, Tuple, Dict, TestResultStatus]] = []
+        self.tests = []
+        # Gather all the static tests and add them to the list of tests to be executed.
+        # The tests generated at runtime are added during the execution
         for name, method in inspect.getmembers(self, predicate=inspect.ismethod):
             if getattr(method, "_is_test_method", False):
                 self.add_test_method(method.test_name, method)  # type: ignore
 
-        self.test_logger = logger1
+        self.test_logger = logger
 
         self.test_logger.info(self.name, ident=0)
 
@@ -116,15 +114,40 @@ class S2TestCase(unittest.TestCase):
         fail_result_status=TestResultStatus.FAIL,
         **kwargs,
     ):
+        """
+        Add a test method to the list to be executed.
+        This is either executed in the __init__ function or in a `generate_tests` function.
+        In the init function we are adding static tests to our list of tests.
+        In the generate function we are adding parametrized tests.
+
+        Args:
+            name (str): Name of the test for the report and logs
+            method (Callable): A callable function that will tag the args and kwargs as parameters
+            fail_result_status (TestResultStatus): The status that the result should get on fail. Should be either FAIL or SOFT_FAIL
+        """
         self.tests.append((name, method, args, kwargs, fail_result_status))
 
     async def generate_tests(self):
+        """
+        This method is run just before the tests are to be executed.
+        This can be used to generate parametrized test cases.
+        Asynchronous tasks can be done/waited here in order to create the tests.
+        """
         pass
 
     async def check_receive_message_type(
-        self,
-        message_type: Type[S2Message],
+        self, message_type: Type[S2Message], timeout=None
     ):
+        """
+        Checks the list of saved messages in the controller to see if a message of the specified type has arrived.
+        If it hasn't arrived yet it will wait for it until the timeout is reached.
+
+        Args:
+            message_type (Type[S2Message]): The message type to retrieve
+
+        Returns:
+            _type_: _description_
+        """
         logger.info("Checking for %s", message_type)
 
         message = None
@@ -132,7 +155,7 @@ class S2TestCase(unittest.TestCase):
             messages: list = self.controller.get_received_messages(message_type)
             if len(messages) < 1:
                 message = await self.controller.message_awaiter.wait_for_message(
-                    message_type, self.TIMEOUT
+                    message_type, self.TIMEOUT if timeout is None else timeout
                 )
             else:
                 message = messages[0]
@@ -147,11 +170,16 @@ class S2TestCase(unittest.TestCase):
         return message
 
     def handle_validation_error(self, err: S2ValidationError):
+        # TODO: Use this...
         self.test_logger.error(f"Received validation error: {err}")
-        pass
 
     @classmethod
     def test(cls, name=None):
+        """
+        Decorator which designates a method as a static test case.
+        Used like: `@S2TestCase.test(name="Test Name")
+        """
+
         def decorator(func):
             func._is_test_method = True
             if name is not None:
@@ -171,11 +199,11 @@ class S2TestCase(unittest.TestCase):
         pass
 
     async def execute(self) -> TestSuiteResults:
-        # logger.info(
-        #     "Executing test case %s. Has %s tests.",
-        #     self.__class__.__name__,
-        #     len(self.tests),
-        # )
+        """Execute the tests from this test case and returns the result information for the report.
+
+        Returns:
+            TestSuiteResults: Result information.
+        """
         test_suite_result = TestSuiteResults(name=self.name)
         start_time = time.time()
 
@@ -201,22 +229,24 @@ class S2TestCase(unittest.TestCase):
             except AssertionError as e:
                 message = str(e)
                 self.test_logger.error(f"Assertion error: {e}")
-                # self.report.add_test_suite_result(f"{name}: FAILED ({e})")
             except Exception as e:
                 message = str(e)
                 self.test_logger.error(f"Error error: {e}")
 
             case_end_time = time.time()
 
+            # Convert the test args to a dict to be added to the report.
+            report_parameters = {
+                **{f"arg_{index}": str(value) for index, value in enumerate(args)},
+                **{key: str(value) for key, value in kwargs.items()},
+            }
+
             result = TestResult(
                 name=name,
                 status=status,
                 duration=round(case_end_time - case_start_time, 2),
                 message=message,
-                parameters={
-                    **{f"arg_{index}": str(value) for index, value in enumerate(args)},
-                    **{key: str(value) for key, value in kwargs.items()},
-                },
+                parameters=report_parameters,
             )
 
             test_suite_result.add_test_result(result)
@@ -273,15 +303,17 @@ class TestSuite:
         )
         for TestCase in test_cases:
             control_type = TestCase.control_type
-            test_case = TestCase(
-                self.config.get_control_type_config(role, control_type),
-                channel,
-                controller,
-                self.report,
-                self.test_logger,
-            )
+            config = (self.config.get_control_type_config(role, control_type),)
+            if config is not None:
+                test_case = TestCase(
+                    config,  # type: ignore
+                    channel,
+                    controller,
+                    self.report,
+                    self.test_logger,
+                )
 
-            result = await test_case.execute()
+                result = await test_case.execute()
 
             self.report.add_test_suite_result(result)
 

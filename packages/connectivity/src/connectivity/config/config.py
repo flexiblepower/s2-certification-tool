@@ -40,6 +40,7 @@ class CertificationConfig(BaseModel):
 class ReportConfig(BaseModel):
     yaml: Optional[str] = None
     xml: Optional[str] = None
+    include_test_parameters: bool = True # TODO: Use this.
 
 
 class RoleTestConfig(BaseModel):
@@ -55,7 +56,7 @@ class RoleTestConfig(BaseModel):
 
     def get_control_type_config(
         self, role: EnergyManagementRole, control_type: ProtocolControlType
-    ):
+    ) -> BaseTestConfig | None:
         match role:
             case EnergyManagementRole.RM:
                 return self.rm.get_control_type_config(control_type)
@@ -69,7 +70,7 @@ class Config(BaseModel):
     certification: Optional[CertificationConfig] = None
     device_details: Optional[DeviceDetails] = None
     roles: RoleTestConfig
-    report: Optional[ReportConfig] = None
+    report: Optional[ReportConfig] = ReportConfig()
 
 
 def load_config(config_path) -> Config:

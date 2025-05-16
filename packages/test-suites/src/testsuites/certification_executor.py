@@ -107,7 +107,8 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
         if type(message) == S2MessageEnvelope:
             await self.s2_channel.send(message.message)
         elif type(message) == LogMessageEnvelope:
-            logger.info(message.message.content)
+            # ? Great variable naming right there...
+            logger.info(message.message.message)
         elif type(message) == ControlMessageEnvelope:
             await self.handle_control_message(message.message)
 
@@ -173,9 +174,6 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
     async def get_next_s2_channel_message(self):
         # Done like this so the server side can override this.
         return await self.s2_channel.get_next_message()
-
-    def get_compliance_report(self):
-        return self.report
 
     async def setup(
         self,
