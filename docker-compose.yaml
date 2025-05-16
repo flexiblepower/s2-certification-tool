@@ -2,8 +2,9 @@
 
 services:
   s2-self-cert:
+    image: ci.tno.nl:4567/s2/kiflin/s2-self-certification:latest
     build:
-      dockerfile: ./docker/Dockerfile.client
+      dockerfile: ./Dockerfile.client
     command: python3 src/main.py /app/config.yaml -o /app/cert.yaml -l log.log
     ports:
       - 8000:8000

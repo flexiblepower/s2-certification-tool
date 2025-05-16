@@ -1,7 +1,7 @@
 from ..certificate.certificate import (
-    ComplianceFinding,
+    TestSuiteResults,
     ComplianceReport,
-    ComplianceStatus,
+    TestResultStatus,
 )
 from testsuites.controllers import BaseRMController
 from testsuites.test_suite.test_suite import S2TestCase, TestLogger
@@ -22,39 +22,29 @@ logger = logging.getLogger(__name__)
 class NoSelectionTestCase(S2TestCase):
     control_type = ProtocolControlType.NO_SELECTION
 
-    finding = ComplianceFinding(test="Test Receive RM Details")
+    name = "Test Receive RM Details"
 
     TIMEOUT = 5
 
     controller: BaseRMController
     config: BaseTestConfig
 
-    def __init__(
-        self,
-        config: BaseTestConfig,
-        channel: S2Channel,
-        controller: BaseRMController,
-        report: ComplianceReport,
-        logger: TestLogger,
-    ):
-        super().__init__(config, channel, controller, report, logger)
-
     async def test_validate_rm_details_received(self):
-        if self.controller.resource_manager_details is not None:
-            self.finding.add_parameter(
-                "ResourceManagerDetails Received.", ComplianceStatus.PASS
-            )
-            self.finding.add_parameter(
-                "ResourceManagerDetails Valid.", ComplianceStatus.PASS
-            )
+        # if self.controller.resource_manager_details is not None:
+        #     self.name.add_parameter(
+        #         "ResourceManagerDetails Received.", TestResultStatus.PASS
+        #     )
+        #     self.name.add_parameter(
+        #         "ResourceManagerDetails Valid.", TestResultStatus.PASS
+        #     )
 
         self.test_logger.success("Resource manager details received.")
 
 
 class ReceivePowerForecastTestCase(NoSelectionTestCase):
-    finding = ComplianceFinding(test="Test Receive Power Forecast")
+    name = "Test Receive Power Forecast"
 
-    @S2TestCase.test
+    @S2TestCase.test("Test Receive Power Forecast")
     async def test_receive_power_forecast(self):
         message = await self.check_receive_message_type(PowerForecast)
 
@@ -62,9 +52,9 @@ class ReceivePowerForecastTestCase(NoSelectionTestCase):
 
 
 class ReceivePowerMeasurementTestCase(NoSelectionTestCase):
-    finding = ComplianceFinding(test="Test Receive Power Measurement")
+    name = "Test Receive Power Measurement"
 
-    @S2TestCase.test
+    @S2TestCase.test("Test Receive Power Measurement")
     async def test_receive_power_measurement(self):
         message = await self.check_receive_message_type(PowerMeasurement)
         self.test_logger.success("Test Received Power Measurement")

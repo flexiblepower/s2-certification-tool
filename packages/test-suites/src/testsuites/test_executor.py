@@ -236,7 +236,7 @@ class CEMTestExecutor(AbstractRoleExecutor):
         except KeyError:
             raise ValueError("Invalid control type selection...")
 
-    def process_message(self, message: S2Message):
+    async def process_message(self, message: S2Message):
         if type(message) == SelectControlType:
             await self.handle_select_control_type(message)
         return super().process_message(message)
@@ -367,6 +367,8 @@ class IntegrationTestExecutor(AbstractExecutor):
         else:
             raise ValueError("Unable to run role executor main loop.")
 
+        await self.stop()
+
     async def run(self, *args, **kwargs):
         self.running = True
         await self.setup(*args, **kwargs)
@@ -406,6 +408,11 @@ class IntegrationTestExecutor(AbstractExecutor):
             await self.cleanup()  # Perform final cleanup (e.g., channel.stop())
             logger.info("Cleanup finished.")
             self.running = False
+
+    def get_compliance_report(self) -> ComplianceReport:
+        if self.executor is not None:
+            return self.executor.report
+        raise ValueError("No testing has been done.")
 
 
 def create_rm_controllers_dict_with_config(

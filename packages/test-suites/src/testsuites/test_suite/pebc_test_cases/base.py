@@ -1,12 +1,12 @@
 import logging
 from typing import Optional
 
-from testsuites.test_suite.test_suite import TestLogger
+from testsuites.test_suite.test_suite import S2TestCase, TestLogger
 from testsuites.certificate.certificate import (
-    ComplianceFinding,
-    ComplianceParameter,
+    TestSuiteResults,
+    TestResult,
     ComplianceReport,
-    ComplianceStatus,
+    TestResultStatus,
 )
 from connectivity.config import PEBCRMTestConfig
 from testsuites.controllers import PEBCRMController
@@ -17,7 +17,7 @@ from connectivity.s2_channel import S2Channel
 logger = logging.getLogger(__name__)
 
 
-class PEBCTestCase(NoSelectionTestCase):
+class PEBCTestCase(S2TestCase):
     control_type = ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL
     controller: PEBCRMController
     config: PEBCRMTestConfig

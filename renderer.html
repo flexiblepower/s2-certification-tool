@@ -9,6 +9,11 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/vue@3.2.37/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <style>
+        .accordion-button:focus {
+            box-shadow: none;
+        }
+    </style>
 </head>
 
 <body>
@@ -18,33 +23,91 @@
 
         <div class="card mb-3" v-if="device">
             <div class="card-body">
-                <h3 class="card-title">Overview</h5>
-                    <p class="card-text" v-if="timestamp"><strong>Timestamp</strong>: {{ timestamp }}</p>
-                    <p class="card-text"><strong>Result:</strong> TODO</p>
+                <h3 class="card-title">Overview</h3>
+                <p class="card-text" v-if="timestamp"><strong>Timestamp</strong>: {{ timestamp }}</p>
+                <p class="card-text"><strong>Result:</strong> TODO </p>
             </div>
         </div>
         <div class="card mb-3" v-if="device">
             <div class="card-body">
-                <h3 class="card-title">Device Information</h5>
-                    <p class="card-text"><strong>Manufacturer:</strong> {{ device.manufacturer }}</p>
-                    <p class="card-text"><strong>Name:</strong> {{ device.name }}</p>
+                <h3 class="card-title">Device Information</h3>
+                <p class="card-text"><strong>Manufacturer:</strong> {{ device.manufacturer }}</p>
+                <p class="card-text"><strong>Name:</strong> {{ device.name }}</p>
             </div>
         </div>
+
         <div class="card card-body">
-            <h3>Test Findings</h3>
-            <div v-for="finding in findings" :key="finding.test">
-                <hr>
-                <h5 class="card-title">{{ finding.test }}</h5>
-                <ul class="list-group list-group-flush">
-                    <li class="list-group-item" v-for="parameter in finding.parameters" :key="parameter.name">
-                        <strong>{{ parameter.name }}</strong>: {{ parameter.status }}
-                    </li>
-                </ul>
-                <p class="card-text mt-2"><strong>Status:</strong> {{ finding.status }}</p>
+            <h3>Test Suite Results</h3>
+            <div class="accordion" id="suiteAccordion">
+                <div class="accordion-item" v-for="(suite, sIdx) in test_suites" :key="suite.name">
+                    <h2 class="accordion-header" :id="'suiteHeading' + sIdx">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            :data-bs-target="'#suiteCollapse' + sIdx" aria-expanded="false"
+                            :aria-controls="'suiteCollapse' + sIdx">
+                            <span class="me-2">{{ suite.name }}</span>
+                            <span class="badge ms-2"
+                                :class="suite.status === 'PASS' ? 'text-bg-success' : 'text-bg-danger'">
+                                {{ suite.status }}
+                            </span>
+                            <span class="ms-3 text-muted small">Duration: {{ suite.duration }}s</span>
+                        </button>
+                    </h2>
+                    <div :id="'suiteCollapse' + sIdx" class="accordion-collapse collapse"
+                        :aria-labelledby="'suiteHeading' + sIdx" data-bs-parent="#suiteAccordion">
+                        <div class="accordion-body">
+                            <div v-if="suite.tests && suite.tests.length">
+                                <div class="accordion" :id="'testAccordion' + sIdx">
+                                    <div class="accordion-item" v-for="(test, tIdx) in suite.tests"
+                                        :key="test.name + tIdx">
+                                        <h2 class="accordion-header" :id="'testHeading' + sIdx + '-' + tIdx">
+                                            <button class="accordion-button collapsed" type="button"
+                                                data-bs-toggle="collapse"
+                                                :data-bs-target="'#testCollapse' + sIdx + '-' + tIdx"
+                                                aria-expanded="false"
+                                                :aria-controls="'testCollapse' + sIdx + '-' + tIdx">
+                                                <span class="me-2">{{ test.name }}</span>
+                                                <span class="badge ms-2"
+                                                    :class="test.status === 'PASS' ? 'text-bg-success' : 'text-bg-danger'">
+                                                    {{ test.status }}
+                                                </span>
+                                                <span class="ms-3 text-muted small">Duration: {{ test.duration
+                                                    }}s</span>
+                                            </button>
+                                        </h2>
+                                        <div :id="'testCollapse' + sIdx + '-' + tIdx"
+                                            class="accordion-collapse collapse"
+                                            :aria-labelledby="'testHeading' + sIdx + '-' + tIdx"
+                                            :data-bs-parent="'#testAccordion' + sIdx">
+                                            <div class="accordion-body">
+                                                <div v-if="test.message" class="mb-2">
+                                                    <strong>Message:</strong>
+                                                    <pre class="bg-light p-2 rounded">{{ test.message }}</pre>
+                                                </div>
+                                                <div v-if="test.parameters && Object.keys(test.parameters).length">
+                                                    <strong>Parameters:</strong>
+                                                    <ul class="list-group list-group-flush">
+                                                        <li class="list-group-item py-1"
+                                                            v-for="(value, key) in test.parameters" :key="key">
+                                                            <strong>{{ key }}:</strong> {{ value }}
+                                                        </li>
+                                                    </ul>
+                                                </div>
+                                                <div v-else class="text-muted">No parameters.</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="text-muted">No test methods found in this suite.</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
+    <!-- Bootstrap JS for accordion functionality -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         const { createApp } = Vue;
 
@@ -52,6 +115,7 @@
             data() {
                 return {
                     device: null,
+                    test_suites: [],
                     findings: [],
                     timestamp: null
                 };
@@ -64,7 +128,7 @@
                         const yamlData = e.target.result;
                         const data = jsyaml.load(yamlData);
                         this.device = data.device;
-                        this.findings = data.findings;
+                        this.test_suites = data.test_suites;
                         this.timestamp = data.timestamp;
                     };
                     reader.readAsText(file);

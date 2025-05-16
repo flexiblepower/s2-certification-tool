@@ -26,7 +26,6 @@ parser.add_argument(
 )
 
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +55,7 @@ async def main():
 
     if config.connection.mode == "server":
         s2_server = S2WebSocketServer(
-            config.connection,
+            config,
             test_executor,
             config.mode,
             args.output,
@@ -64,7 +63,7 @@ async def main():
         await s2_server.start()
     else:
         s2_client = S2WebSocketClient(
-            config.connection,
+            config,
             test_executor,
             config.mode,
             args.output,

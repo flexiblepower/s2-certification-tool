@@ -1,3 +1,4 @@
+import abc
 import asyncio
 from typing import (
     Callable,
@@ -81,8 +82,6 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
     server_channel: Channel[ServerMessageEnvelope, str]
 
     config: Optional[Config]
-
-    report: ComplianceReport
 
     _stop_event: asyncio.Event
 
@@ -270,3 +269,7 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
             await self.cleanup()  # Perform final cleanup (e.g., channel.stop())
             logger.info("Cleanup finished.")
             self.running = False
+
+    @abc.abstractmethod
+    def get_compliance_report(self):
+        pass

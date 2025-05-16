@@ -3,13 +3,15 @@ import asyncio
 import functools
 import inspect
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, Type
+import time
+from typing import TYPE_CHECKING, Callable, Coroutine, Dict, List, Optional, Tuple, Type
+import unittest
 
 from testsuites.certificate.certificate import (
-    ComplianceFinding,
-    ComplianceParameter,
+    TestSuiteResults,
+    TestResult,
     ComplianceReport,
-    ComplianceStatus,
+    TestResultStatus,
 )
 from connectivity.config import BaseTestConfig, ControlTypeRMTestConfig, RoleTestConfig
 from testsuites.controllers.controller import Controller
@@ -41,33 +43,35 @@ class TestLogger:
     def error(self, message, ident=2):
         self.logger.warning("%s[FAIL] %s", " " * ident, message)
 
-    def log(self, message, status: ComplianceStatus = ComplianceStatus.PASS, ident=2):
+    def log(self, message, status: TestResultStatus = TestResultStatus.PASS, ident=2):
         match status:
-            case ComplianceStatus.PASS:
+            case TestResultStatus.PASS:
                 self.success(message, ident=ident)
-            case ComplianceStatus.SOFT_FAIL:
+            case TestResultStatus.SOFT_FAIL:
                 self.soft_error(message, ident=ident)
-            case ComplianceStatus.FAIL:
+            case TestResultStatus.FAIL:
                 self.error(message, ident=ident)
 
-    def log_status_list(self, message, statuses: list[ComplianceStatus], ident=2):
-        if ComplianceStatus.FAIL in statuses:
+    def log_status_list(self, message, statuses: list[TestResultStatus], ident=2):
+        if TestResultStatus.FAIL in statuses:
             self.error(message, ident=ident)
-        elif ComplianceStatus.SOFT_FAIL in statuses:
+        elif TestResultStatus.SOFT_FAIL in statuses:
             self.soft_error(message, ident=ident)
-        elif ComplianceStatus.PASS in statuses:
+        elif TestResultStatus.PASS in statuses:
             self.success(message, ident=ident)
 
 
-class S2TestCase(abc.ABC):
+class S2TestCase(unittest.TestCase):
     control_type: ProtocolControlType = ProtocolControlType.NO_SELECTION
     config: BaseTestConfig
 
-    finding: ComplianceFinding
+    name: str
 
     test_logger: TestLogger
 
     TIMEOUT = 5
+
+    tests: List[Tuple[str, Callable, Tuple, Dict]]
 
     def __init__(
         self,
@@ -75,38 +79,47 @@ class S2TestCase(abc.ABC):
         channel: S2Channel,
         controller: Controller,
         report: ComplianceReport,
-        logger: TestLogger,
+        logger1: TestLogger,
     ):
+        super().__init__()
         self.channel = channel
         self.controller = controller
         self.config = config
         self.report = report
 
-        finding_set = True
+        name_set = True
         try:
-            if self.finding is None:
-                finding_set = False
+            if self.name is None:
+                name_set = False
         except:
-            finding_set = False
+            name_set = False
 
-        if not finding_set:
+        if not name_set:
             raise ValueError(
-                "Finding must be declared as a constant for a test case class."
+                f"Test case name must be declared as a constant for a test case class ({self.__class__})"
             )
 
-        self.test_logger = logger
+        self.tests: List[Tuple[str, Callable, Tuple, Dict, TestResultStatus]] = []
+        for name, method in inspect.getmembers(self, predicate=inspect.ismethod):
+            if getattr(method, "_is_test_method", False):
+                self.add_test_method(method.test_name, method)  # type: ignore
 
-        self.test_logger.info(self.finding.test, ident=0)
+        self.test_logger = logger1
 
-    def add_finding_param(
+        self.test_logger.info(self.name, ident=0)
+
+    def add_test_method(
         self,
-        name: str,
-        detail: Optional[str] = None,
-        status: ComplianceStatus = ComplianceStatus.PASS,
+        name,
+        method: Callable,
+        *args,
+        fail_result_status=TestResultStatus.FAIL,
+        **kwargs,
     ):
-        param = ComplianceParameter(name=name, detail=detail, status=status)
+        self.tests.append((name, method, args, kwargs, fail_result_status))
 
-        self.finding.add_parameter(param=param)
+    async def generate_tests(self):
+        pass
 
     async def check_receive_message_type(
         self,
@@ -131,17 +144,6 @@ class S2TestCase(abc.ABC):
             if len(messages) > 0:
                 message = messages[0]
 
-        if message is not None:
-            self.add_finding_param(
-                name=f"{message_type.__name__} Provided.",
-                status=ComplianceStatus.PASS,
-            )
-        else:
-            self.add_finding_param(
-                name=f"{message_type.__name__} Not Provided.",
-                status=ComplianceStatus.FAIL,
-            )
-
         return message
 
     def handle_validation_error(self, err: S2ValidationError):
@@ -149,9 +151,16 @@ class S2TestCase(abc.ABC):
         pass
 
     @classmethod
-    def test(cls, func):
-        func._is_test_case = True
-        return func
+    def test(cls, name=None):
+        def decorator(func):
+            func._is_test_method = True
+            if name is not None:
+                func.test_name = name
+            else:
+                func.test_name = func.__name__
+            return func
+
+        return decorator
 
     async def setup(self):
         """Override in subclass for per-test setup."""
@@ -161,28 +170,68 @@ class S2TestCase(abc.ABC):
         """Override in subclass for per-test teardown."""
         pass
 
-    def get_test_cases(self):
-        test_cases = []
-        for name, method in inspect.getmembers(self, predicate=inspect.ismethod):
-            if getattr(method, "_is_test_case", False):
-                test_cases.append((name, method))
-        return test_cases
+    async def execute(self) -> TestSuiteResults:
+        # logger.info(
+        #     "Executing test case %s. Has %s tests.",
+        #     self.__class__.__name__,
+        #     len(self.tests),
+        # )
+        test_suite_result = TestSuiteResults(name=self.name)
+        start_time = time.time()
 
-    async def execute(self):
-        logger.info(
-            "Executing test case %s. Has %s tests.",
-            self.__class__.__name__,
-            len(self.get_test_cases()),
-        )
-        for name, method in self.get_test_cases():
-            # self.logger.info(f"Running test case: {name}")
-            await self.setup()
+        # Generates the parametarised test cases and adds them to the tests list.
+        # This method is overridden in subclasses for generating the test
+        await self.generate_tests()
+
+        logger.info("%s: %s", self.name, len(self.tests))
+
+        for name, method, args, kwargs, fail_result_status in self.tests:
+            case_start_time = time.time()
+            status = fail_result_status
+            message: Optional[str] = None
             try:
-                await method()
-            finally:
-                await self.teardown()
+                await self.setup()
+                try:
+                    await method(*args, **kwargs)
+                finally:
+                    await self.teardown()
+
+                self.test_logger.success(f"{name}")
+                status = TestResultStatus.PASS
+            except AssertionError as e:
+                message = str(e)
+                self.test_logger.error(f"Assertion error: {e}")
+                # self.report.add_test_suite_result(f"{name}: FAILED ({e})")
+            except Exception as e:
+                message = str(e)
+                self.test_logger.error(f"Error error: {e}")
+
+            case_end_time = time.time()
+
+            result = TestResult(
+                name=name,
+                status=status,
+                duration=round(case_end_time - case_start_time, 2),
+                message=message,
+                parameters={
+                    **{f"arg_{index}": str(value) for index, value in enumerate(args)},
+                    **{key: str(value) for key, value in kwargs.items()},
+                },
+            )
+
+            test_suite_result.add_test_result(result)
+
+        if len(self.tests) < 1:
+            test_suite_result.status = TestResultStatus.N_A
+
+        end_time = time.time()
+        duration = round(end_time - start_time, 2)
+
+        test_suite_result.duration = duration
         # self.logger.info("Test case %s complete.", self.__class__.__name__)
         # self.logger.info("-" * 20)
+
+        return test_suite_result
 
 
 class TestSuite:
@@ -231,9 +280,10 @@ class TestSuite:
                 self.report,
                 self.test_logger,
             )
-            await test_case.execute()
 
-            self.report.add_finding(test_case.finding)
+            result = await test_case.execute()
+
+            self.report.add_test_suite_result(result)
 
 
 class TestSuiteBuilder:

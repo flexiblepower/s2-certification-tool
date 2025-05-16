@@ -4,10 +4,10 @@ import logging
 import uuid
 
 from testsuites.certificate.certificate import (
-    ComplianceFinding,
-    ComplianceParameter,
+    TestSuiteResults,
+    TestResult,
     ComplianceReport,
-    ComplianceStatus,
+    TestResultStatus,
 )
 from connectivity.config import FRBCRMTestConfig, PEBCRMTestConfig
 from testsuites.controllers import FRBCRMController

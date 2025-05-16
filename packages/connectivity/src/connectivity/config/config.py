@@ -37,6 +37,11 @@ class CertificationConfig(BaseModel):
     uri: str
 
 
+class ReportConfig(BaseModel):
+    yaml: Optional[str] = None
+    xml: Optional[str] = None
+
+
 class RoleTestConfig(BaseModel):
     rm: ControlTypeRMTestConfig
     cem: ControlTypeCEMTestConfig
@@ -64,12 +69,14 @@ class Config(BaseModel):
     certification: Optional[CertificationConfig] = None
     device_details: Optional[DeviceDetails] = None
     roles: RoleTestConfig
+    report: Optional[ReportConfig] = None
 
 
 def load_config(config_path) -> Config:
     with open(config_path) as stream:
         try:
             config = yaml.safe_load(stream)
+            logger.info(config)
         except yaml.YAMLError as exc:
             logger.error("Failed to load yaml config file.")
             raise

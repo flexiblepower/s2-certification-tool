@@ -35,4 +35,4 @@ RUN chmod -R 755 /app/
 # Reset the entrypoint, don't invoke `uv`
 ENTRYPOINT []
 
-CMD ["fastapi", "dev", "src/main.py"]
+CMD ["python3", "src/main.py"]
