@@ -43,10 +43,10 @@ class S2MessageAwaiter:
 
     def receive_message(self, message: S2Message):
         if type(message) in self.awaiting:
-            # logger.debug(
-            #     "Received %s message that is being waited for. Setting event.",
-            #     message.message_type,
-            # )
+            logger.info(
+                "Received %s message that is being waited for. Setting event.",
+                message.message_type,
+            )
             event = self.awaiting[type(message)][0]
 
             # Set the message first before triggering the event to make sure that the
@@ -54,10 +54,10 @@ class S2MessageAwaiter:
             self.awaiting[type(message)] = (event, message)
 
             event.set()
-        # else:
-        #     logger.debug(
-        #         "Received %s message but nothing waiting for it.", type(message)
-        #     )
+        else:
+            logger.info(
+                "Received %s message. Nothing waiting for it.", type(message)
+            )
 
 
 async def send_okay_message(channel: S2Channel, message: S2Message):

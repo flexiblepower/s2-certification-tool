@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from typing import Awaitable
 
@@ -29,12 +30,15 @@ class BaseCEMController(Controller):
 
         self.resource_manager_details = resource_manager_details
 
+        self._handshake_received_event = asyncio.Event()
+
         self.add_handler(Handshake, self.handle_handshake)
 
     async def handle_handshake(
         self, message: Handshake, channel: S2Channel, send_okay: Awaitable[None]
     ):
         logger.info("Received Handshake message: %s", message)
+        self._handshake_received_event.set()
 
         await send_okay
 

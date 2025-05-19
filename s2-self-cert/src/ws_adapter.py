@@ -11,6 +11,7 @@ from connectivity.connection_adapter import (
 import logging
 
 logger = logging.getLogger(__name__)
+message_logger = logging.getLogger("messages")
 
 
 class WebSocketConnectionAdapter(ConnectionAdapter[str]):
@@ -24,7 +25,7 @@ class WebSocketConnectionAdapter(ConnectionAdapter[str]):
             raise ConnectionClosed("Websocket is closed.")
         try:
             message = await self.ws_connection.recv()
-            logger.debug("Received: %s", message)
+            message_logger.debug("[INCOMING] %s", message)
             if isinstance(message, bytes):
                 return message.decode("utf-8")
             return message
@@ -38,7 +39,7 @@ class WebSocketConnectionAdapter(ConnectionAdapter[str]):
 
     async def send(self, message: str):
         try:
-            logger.debug("Sending: %s", message)
+            message_logger.debug("[OUTGOING] %s", message)
             await self.ws_connection.send(message)
         except ConnectionClosed:
             self.is_open = False

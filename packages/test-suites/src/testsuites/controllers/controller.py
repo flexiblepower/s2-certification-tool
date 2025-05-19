@@ -1,3 +1,4 @@
+import abc
 import logging
 import asyncio
 import uuid
@@ -36,11 +37,11 @@ class Controller(MessageHandler):
     def __init__(self):
         super().__init__()
 
-    def handle_message(self, message: S2Message, channel: Optional[S2Channel]):
+    async def handle_message(self, message: S2Message, channel: Optional[S2Channel]):
         if channel is None:
             raise ValueError("Channel must be provided.")
         try:
-            result = super().handle_message(message, channel)
+            result = await super().handle_message(message, channel)
         except:
             raise
         finally:
@@ -59,3 +60,7 @@ class Controller(MessageHandler):
         result = list(filter(filter_messages, self.messages_received))
 
         return result
+
+    @abc.abstractmethod
+    async def perform_handshake(self, channel: Optional[S2Channel]):
+        pass

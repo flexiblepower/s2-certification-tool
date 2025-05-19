@@ -20,12 +20,31 @@ def get_log_config(test_log_file_name=None) -> Dict:
                 "()": "logging.Formatter",
                 "fmt": "%(name)s:%(lineno)d - %(levelname)s - %(message)s",
             },
+            "message-logger": {
+                "()": "logging.Formatter",
+                "fmt": "%(asctime)s [MESSAGE LOGGER] %(message)s",
+            },
+            "plain": {
+                "()": "logging.Formatter",
+                "fmt": "%(message)s",
+            }
         },
         "handlers": {
             "console": {
                 "class": "logging.StreamHandler",
                 "formatter": "short",
                 "stream": "ext://sys.stdout",
+            },
+            "messages-handler": {
+                "class": "logging.StreamHandler",
+                "formatter": "message-logger",
+                "stream": "ext://sys.stdout",
+            },
+            "messages-file-handler": {
+                "class": "logging.FileHandler",
+                "formatter": "plain",
+                "filename": "messages.log",
+                "mode": "w",
             },
         },
         "loggers": {
@@ -37,7 +56,7 @@ def get_log_config(test_log_file_name=None) -> Dict:
             },
             "ws_adapter": {
                 "handlers": ["console"],
-                "level": "INFO",
+                "level": "DEBUG",
                 "propagate": False,
             },
             "websockets": {
@@ -48,6 +67,11 @@ def get_log_config(test_log_file_name=None) -> Dict:
             "asyncio": {"handlers": ["console"], "level": "WARNING", "propagate": True},
             "test-suite-logger": {
                 "handlers": ["console"],
+                "level": "DEBUG",
+                "propagate": False,
+            },
+            "messages": {
+                "handlers": ["messages-handler", "messages-file-handler"],
                 "level": "DEBUG",
                 "propagate": False,
             },
