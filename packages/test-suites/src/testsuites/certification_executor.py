@@ -15,6 +15,8 @@ from connectivity.async_task_manager import AsyncTaskManager
 from connectivity.config import Config
 from connectivity.channel import Channel
 from s2python.message import S2Message
+from testsuites.certificate.certificate import ComplianceReport
+from testsuites.test_logger import AbstractTestLogger
 from testsuites.envelope_models import (
     ServerMessageEnvelope,
     S2MessageEnvelope,
@@ -34,7 +36,6 @@ from connectivity.connection_adapter import (
 import logging
 
 from testsuites.test_executor import AbstractExecutor
-from testsuites.certificate.certificate import ComplianceReport
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,8 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
 
     _stop_event: asyncio.Event
 
+    test_logger: AbstractTestLogger
+
     def __init__(self):
         super().__init__()
 
@@ -103,12 +106,14 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
     async def handle_control_message(self, message: ControlMessage):
         await self.handle_message(message)
 
+    async def handle_log_message(self, message: LogMessage):
+        logger.info(message.message)
+
     async def process_server_message(self, message: ServerMessageEnvelope):
         if type(message) == S2MessageEnvelope:
             await self.s2_channel.send(message.message)
         elif type(message) == LogMessageEnvelope:
-            # ? Great variable naming right there...
-            logger.info(message.message.message)
+            await self.handle_log_message(message.message)
         elif type(message) == ControlMessageEnvelope:
             await self.handle_control_message(message.message)
 
@@ -160,16 +165,6 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
 
     async def send_s2_message(self, message: str):
         await self.s2_channel.send(message)
-
-    async def send_server_log_message(
-        self,
-        message: str,
-        details: Optional[str] = None,
-        level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO",
-    ):
-        log_message = LogMessage(level=level, message=message, details=details)
-        envelope = LogMessageEnvelope(message=log_message)
-        await self.server_channel.send(envelope)
 
     async def get_next_s2_channel_message(self):
         # Done like this so the server side can override this.
@@ -269,5 +264,5 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
             self.running = False
 
     @abc.abstractmethod
-    def get_compliance_report(self):
+    async def get_compliance_report(self) -> ComplianceReport:
         pass

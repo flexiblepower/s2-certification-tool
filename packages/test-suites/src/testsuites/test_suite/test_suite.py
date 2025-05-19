@@ -1,5 +1,6 @@
 import abc
 import asyncio
+from enum import Enum
 import functools
 import inspect
 import logging
@@ -7,6 +8,7 @@ import time
 from typing import TYPE_CHECKING, Callable, Coroutine, Dict, List, Optional, Tuple, Type
 import unittest
 
+from testsuites.envelope_models import LogMessage, LogMessageEnvelope
 from testsuites.certificate.certificate import (
     TestSuiteResults,
     TestResult,
@@ -18,47 +20,17 @@ from testsuites.controllers.controller import Controller
 from s2python.common import ControlType as ProtocolControlType, EnergyManagementRole
 from s2python.message import S2Message
 from s2python.s2_validation_error import S2ValidationError
+from connectivity.channel import Channel
+from testsuites.test_logger import (
+    AbstractTestLogger,
+    TestLogger,
+    ServerTestLogger,
+    TestLoggerLevel,
+)
 
 from connectivity.s2_channel import S2Channel
 
 logger = logging.getLogger(__name__)
-
-
-class TestLogger:
-
-    logger: logging.Logger
-
-    def __init__(self, logger: logging.Logger):
-        self.logger = logger
-
-    def info(self, message, ident=2):
-        self.logger.info("%s[INFO] %s", " " * ident, message)
-
-    def success(self, message, ident=2):
-        self.logger.info("%s[SUCCESS] %s", " " * ident, message)
-
-    def soft_error(self, message, ident=2):
-        self.logger.warning("%s[SOFT-FAIL] %s", " " * ident, message)
-
-    def error(self, message, ident=2):
-        self.logger.warning("%s[FAIL] %s", " " * ident, message)
-
-    def log(self, message, status: TestResultStatus = TestResultStatus.PASS, ident=2):
-        match status:
-            case TestResultStatus.PASS:
-                self.success(message, ident=ident)
-            case TestResultStatus.SOFT_FAIL:
-                self.soft_error(message, ident=ident)
-            case TestResultStatus.FAIL:
-                self.error(message, ident=ident)
-
-    def log_status_list(self, message, statuses: list[TestResultStatus], ident=2):
-        if TestResultStatus.FAIL in statuses:
-            self.error(message, ident=ident)
-        elif TestResultStatus.SOFT_FAIL in statuses:
-            self.soft_error(message, ident=ident)
-        elif TestResultStatus.PASS in statuses:
-            self.success(message, ident=ident)
 
 
 class S2TestCase(unittest.TestCase):
@@ -67,7 +39,7 @@ class S2TestCase(unittest.TestCase):
 
     name: str
 
-    test_logger: TestLogger
+    test_logger: AbstractTestLogger
 
     TIMEOUT = 5
 
@@ -79,7 +51,7 @@ class S2TestCase(unittest.TestCase):
         channel: S2Channel,
         controller: Controller,
         report: ComplianceReport,
-        logger: TestLogger,
+        logger: AbstractTestLogger,
     ):
         super().__init__()
         self.channel = channel
@@ -204,7 +176,11 @@ class S2TestCase(unittest.TestCase):
         Returns:
             TestSuiteResults: Result information.
         """
-        test_suite_result = TestSuiteResults(name=self.name)
+
+        # Control type set to the controller's control type since the NOT_CONTROLLABLE tests are run for each control type and could have different behaviors in each.
+        test_suite_result = TestSuiteResults(
+            name=self.name, control_type=self.controller.control_type
+        )
         start_time = time.time()
 
         # Generates the parametarised test cases and adds them to the tests list.
@@ -213,6 +189,7 @@ class S2TestCase(unittest.TestCase):
 
         logger.info("%s: %s", self.name, len(self.tests))
 
+        # Now we run each test case that is in the tests list with the args provided.
         for name, method, args, kwargs, fail_result_status in self.tests:
             case_start_time = time.time()
             status = fail_result_status
@@ -269,13 +246,13 @@ class TestSuite:
     test_cases: Dict[ProtocolControlType, List[Type[S2TestCase]]]
     report: ComplianceReport
 
-    test_logger: TestLogger
+    test_logger: AbstractTestLogger
 
     def __init__(
         self,
         config: RoleTestConfig,
         report: ComplianceReport,
-        test_logger: TestLogger,
+        test_logger: AbstractTestLogger,
     ):
         self.test_cases = {}
         self.config = config
@@ -323,7 +300,7 @@ class TestSuiteBuilder:
         self,
         config: RoleTestConfig,
         report: ComplianceReport,
-        test_logger: TestLogger,
+        test_logger: AbstractTestLogger,
     ):
         self.test_suite = TestSuite(config, report, test_logger)
 

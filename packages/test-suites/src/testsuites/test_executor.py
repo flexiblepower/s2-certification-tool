@@ -24,10 +24,17 @@ from s2python.message import S2Message
 from testsuites.message_handlers import send_okay_message
 from testsuites.util import wait_for_event_or_stop
 from testsuites.certificate.certificate import ComplianceReport
-from testsuites.test_suite.test_suite import TestLogger, TestSuite, TestSuiteBuilder
+from testsuites.test_suite.test_suite import TestSuite, TestSuiteBuilder
+from testsuites.test_logger import TestLogger
 from testsuites.test_suite import (
     ReceivePowerMeasurementTestCase,
     ReceivePowerForecastTestCase,
+)
+from testsuites.test_logger import (
+    AbstractTestLogger,
+    TestLogger,
+    ServerTestLogger,
+    TestLoggerLevel,
 )
 from testsuites.test_suite.pebc_test_cases import (
     PEBCCurtailmentInstructionTestCase,
@@ -62,8 +69,6 @@ logger = logging.getLogger(__name__)
 
 class AbstractExecutor(abc.ABC):
 
-    report: Optional[ComplianceReport] = None
-
     _stop_event: asyncio.Event
 
     running = False
@@ -87,7 +92,7 @@ class AbstractRoleExecutor(abc.ABC):
     test_suite: TestSuite
 
     report: ComplianceReport
-    test_logger: TestLogger
+    test_logger: AbstractTestLogger
 
     _main_loop_started_event: asyncio.Event
 
@@ -96,7 +101,7 @@ class AbstractRoleExecutor(abc.ABC):
         available_control_types: Dict[ProtocolControlType, Controller],
         test_suite: TestSuite,
         report: ComplianceReport,
-        test_logger: TestLogger,
+        test_logger: AbstractTestLogger,
     ) -> None:
 
         self.controllers = available_control_types
@@ -409,7 +414,7 @@ class IntegrationTestExecutor(AbstractExecutor):
             logger.info("Cleanup finished.")
             self.running = False
 
-    def get_compliance_report(self) -> ComplianceReport:
+    async def get_compliance_report(self) -> ComplianceReport:
         if self.executor is not None:
             return self.executor.report
         raise ValueError("No testing has been done.")
@@ -466,7 +471,7 @@ def create_cem_controllers_dict_with_config(
 
 
 def create_test_executor(
-    config: Config, test_logger: TestLogger
+    config: Config, test_logger: AbstractTestLogger
 ) -> IntegrationTestExecutor:
     report = ComplianceReport(timestamp=datetime.now(), device=config.device_details)
 

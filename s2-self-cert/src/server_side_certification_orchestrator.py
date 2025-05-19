@@ -1,38 +1,15 @@
 import asyncio
-import json
 import logging
-import os
-import uuid
-from types import CoroutineType
 from typing import Awaitable, Callable, Coroutine, Dict, Optional, Type
 
 from testsuites.certificate.certificate import ComplianceReport
-from s2python.common import ControlType as ProtocolControlType
-from s2python.common import (
-    EnergyManagementRole,
-    Handshake,
-    HandshakeResponse,
-    ResourceManagerDetails,
-    SelectControlType,
-)
-from s2python.message import S2Message
-from s2python.s2_validation_error import S2ValidationError
-from s2python.version import S2_VERSION
-
-
-from connectivity.async_task_manager import AsyncTaskManager
-from testsuites.controllers import Controller
-from testsuites.test_suite.test_suite import TestSuite
-from testsuites.util import wait_for_event_or_stop
 from websockets.asyncio.client import connect
 from connectivity.channel import Channel
 from testsuites.server_websocket_envelope_channel import (
     ServerWebsocketConnectionChannel,
 )
 from testsuites.certification_executor import AbstractCertificationExecutor
-from connectivity.s2_channel import S2Channel
 from connectivity.config import Config
-from connectivity.connection_adapter import ConnectionAdapter
 from ws_adapter import WebSocketConnectionAdapter
 
 
@@ -44,6 +21,9 @@ from testsuites.envelope_models import (
     ReportControlMessage,
     ControlMessageEnvelope,
 )
+from testsuites.util import wait_for_event_or_stop
+from testsuites.test_suite import TestLogger
+from testsuites.test_logger import AbstractTestLogger, TestLogger, ServerTestLogger
 from importlib.metadata import version
 
 
@@ -55,12 +35,19 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
 
     report: Optional[ComplianceReport] = None
 
-    def __init__(self, config: Config):
+    test_logger: TestLogger
+
+    _received_report_event: asyncio.Event
+
+    def __init__(self, config: Config, test_logger: AbstractTestLogger):
         super().__init__()
 
         self.config = config
+        self.test_logger = test_logger
 
         self.add_handler(ReportControlMessage, self.handle_report_control_message)
+
+        self._received_report_event = asyncio.Event()
 
     async def handle_report_control_message(self, message: ReportControlMessage):
 
@@ -69,6 +56,16 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
         logger.info("Received report from server: %s", report)
 
         self.report = report
+
+        self._received_report_event.set()
+
+    async def handle_log_message(self, message):
+        if message.logger == "test":
+            self.test_logger.log(message.message, message.level, ident=message.ident)
+        else:
+            logger.info(
+                message.message,
+            )
 
     async def connect_to_server(self) -> Channel[ServerMessageEnvelope, str]:
         uri = self.config.certification.uri
@@ -98,7 +95,7 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
 
         envelope = ControlMessageEnvelope(message=message)
 
-        self.server_channel.send(envelope)
+        await self.server_channel.send(envelope)
 
     async def main_loop(self):
 
@@ -107,10 +104,20 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
 
         logger.info("Config sent.")
 
+        await wait_for_event_or_stop(
+            self._received_report_event,
+            self._stop_event,
+            description="Received Report Event",
+        )
+
     async def run(self, s2_channel, *args, **kwargs):
         server_channel = await self.connect_to_server()
 
         return await super().run(s2_channel, server_channel, *args, **kwargs)
+
+    async def get_compliance_report(self):
+        await self._received_report_event.wait()
+        return self.report
 
 
 # class ServerSideCertificationOrchestrator(ServerOrchestrator):

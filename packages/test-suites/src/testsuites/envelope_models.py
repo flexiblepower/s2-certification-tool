@@ -1,6 +1,6 @@
 from enum import Enum
 import json
-from typing import Dict, Optional, Type, Union
+from typing import Dict, Literal, Optional, Type, Union
 from pydantic import BaseModel, ValidationError
 
 from connectivity.config import Config
@@ -29,9 +29,11 @@ class ControlMessageType(str, Enum):
 
 
 class LogMessage(BaseModel):
-    level: str
+    level: Literal["SUCCESS", "SOFT_ERROR", "ERROR", "INFO", "DEBUG"]
     message: str
-    details: Optional[str]
+    details: Optional[str] = None
+    ident: int = 2
+    logger: Literal["test", "stdout"] = "stdout"
 
 
 class ClientInfo(BaseModel):
@@ -56,7 +58,9 @@ class ReportControlMessage(BaseModel):
     report: ComplianceReport
 
 
-ControlMessage = Union[ConfigControlMessage, ReportControlMessage]
+ControlMessage = Union[
+    ConfigControlMessage, ClientInfoControlMessage, ReportControlMessage
+]
 
 
 class BaseEnvelope(BaseModel):
@@ -86,6 +90,7 @@ ServerMessageEnvelope = Union[
 control_types_dict: Dict[ControlMessageType, Type[ControlMessage]] = {
     ControlMessageType.CONFIG: ConfigControlMessage,
     ControlMessageType.REPORT: ReportControlMessage,
+    ControlMessageType.CLIENT_INFO: ClientInfoControlMessage,
 }
 
 envelope_types_dict: Dict[MessageEnvelopeTypeEnum, Type[ServerMessageEnvelope]] = {
@@ -96,10 +101,13 @@ envelope_types_dict: Dict[MessageEnvelopeTypeEnum, Type[ServerMessageEnvelope]] 
 
 
 def parse_control_message(message: dict) -> ControlMessage:
-    logger.info("Parsing control message.")
     msg_type: ControlMessageType = ControlMessageType[message["message_type"]]
 
-    message_class = control_types_dict[msg_type]
+    try:
+        message_class = control_types_dict[msg_type]
+    except KeyError as e:
+        logger.error("Invalid message type %s", msg_type)
+        raise
 
     return message_class.model_validate(message)
 

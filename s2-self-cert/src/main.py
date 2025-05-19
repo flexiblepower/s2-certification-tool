@@ -29,10 +29,10 @@ parser.add_argument(
 logger = logging.getLogger(__name__)
 
 
-def create_server_certification_executor(config: Config) -> CertificationTestExecutor:
-    return CertificationTestExecutor(
-        config,
-    )
+def create_server_certification_executor(
+    config: Config, test_logger: TestLogger
+) -> CertificationTestExecutor:
+    return CertificationTestExecutor(config, test_logger)
 
 
 async def main():
@@ -41,11 +41,11 @@ async def main():
     logging.config.dictConfig(get_log_config(args.log_file))
 
     config: Config = load_config(args.config)
+    test_logger = TestLogger(logger=logging.getLogger("test-suite-logger"))
 
     if config.mode == "certification":
-        test_executor = create_server_certification_executor(config)
+        test_executor = create_server_certification_executor(config, test_logger)
     elif config.mode == "testing":
-        test_logger = TestLogger(logger=logging.getLogger("test-suite-logger"))
         test_executor = create_test_executor(config, test_logger)
     else:
         raise ValueError("Invalid mode.")

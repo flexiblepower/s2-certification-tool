@@ -40,7 +40,7 @@ class CertificationConfig(BaseModel):
 class ReportConfig(BaseModel):
     yaml: Optional[str] = None
     xml: Optional[str] = None
-    include_test_parameters: bool = True # TODO: Use this.
+    include_test_parameters: bool = True
 
 
 class RoleTestConfig(BaseModel):

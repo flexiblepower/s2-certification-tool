@@ -8,6 +8,7 @@ import yaml
 from connectivity.config import DeviceDetails
 
 from s2python.message import S2Message
+from s2python.common import ControlType as ProtocolControlType
 import xml.etree.ElementTree as ET
 from connectivity.config import ReportConfig
 
@@ -35,6 +36,7 @@ class TestResult(BaseModel):
 
 class TestSuiteResults(BaseModel):
     name: str
+    control_type: ProtocolControlType
     duration: Optional[float] = None
     status: TestResultStatus = TestResultStatus.PASS
     tests: List[TestResult] = []
@@ -56,6 +58,10 @@ class TestSuiteResults(BaseModel):
     @field_serializer("status")
     def serializer_status(self, status: TestResultStatus):
         return status.name
+
+    @field_serializer("control_type")
+    def serializer_control_type(self, control_type: ProtocolControlType):
+        return control_type.name
 
     @property
     def count_passed(self, include_soft_fail=False):
@@ -85,6 +91,17 @@ class TestSuiteResults(BaseModel):
                 count += 1
         return count
 
+    def model_dump(self, *args, include_test_parameters=False, **kwargs):
+        dump = super().model_dump(*args, exclude={"tests"}, **kwargs)
+
+        ex = {}
+        if not include_test_parameters:
+            ex = {"parameters"}
+
+        dump["tests"] = [suite.model_dump(exclude=ex) for suite in self.tests]
+
+        return dump
+
 
 class ComplianceReport(BaseModel):
     timestamp: datetime = datetime.now()
@@ -95,18 +112,28 @@ class ComplianceReport(BaseModel):
     def add_test_suite_result(self, result: TestSuiteResults):
         self.test_suites.append(result)
 
-    def generate_certificate_dict(self) -> dict:
-        return self.model_dump(exclude_none=True)
+    def generate_certificate_dict(self, include_test_parameters=False) -> dict:
+
+        dump = self.model_dump(exclude_none=True, exclude={"test_suites"})
+
+        dump["test_suites"] = [
+            suite.model_dump(include_test_parameters=include_test_parameters)
+            for suite in self.test_suites
+        ]
+
+        return dump
 
     def export(self, config: ReportConfig):
         if config.yaml is not None:
-            self.export_to_yaml(config.yaml)
+            self.export_to_yaml(config.yaml, config.include_test_parameters)
         if config.xml is not None:
             self.export_to_junit_xml(config.xml)
 
-    def export_to_yaml(self, filename):
+    def export_to_yaml(self, filename, include_test_parameters):
         with open(filename, "w") as output:
-            cert_data = self.generate_certificate_dict()
+            cert_data = self.generate_certificate_dict(
+                include_test_parameters=include_test_parameters
+            )
             yaml.dump(cert_data, output, default_flow_style=False)
 
     @staticmethod
@@ -137,7 +164,7 @@ class ComplianceReport(BaseModel):
         root_testsuites_element = ET.Element("testsuites")
 
         for suite in self.test_suites:
-            suite_name = suite.name
+            suite_name = f"{suite.name} ({str(suite.control_type)})"
             suite_duration = suite.duration if suite.duration else 0
             suite_num_tests = len(suite.tests)
             suite_num_failures = suite.count_failed

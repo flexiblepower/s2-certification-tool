@@ -1,8 +1,14 @@
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
-from connectivity.connection_adapter import ConnectionAdapter, ConnectionClosed, ConnectionError
+from connectivity.connection_adapter import (
+    ConnectionAdapter,
+    ConnectionClosed,
+    ConnectionError,
+)
 
 
 class FastAPIWebSocketAdapter(ConnectionAdapter[str]):
+    """Wrap the FastAPI websocket in the adapter since the websockets package has a different API."""
+
     def __init__(self, websocket: WebSocket):
         self.connected = True
         self.websocket = websocket
@@ -33,7 +39,10 @@ class FastAPIWebSocketAdapter(ConnectionAdapter[str]):
 
     @property
     def open(self) -> bool:
-        return self.websocket.application_state == WebSocketState.CONNECTED and self.connected
+        return (
+            self.websocket.application_state == WebSocketState.CONNECTED
+            and self.connected
+        )
 
     async def close(self, code: int = 1000, reason: str = ""):
         try:

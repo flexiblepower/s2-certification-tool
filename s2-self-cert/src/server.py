@@ -63,7 +63,10 @@ class S2WebSocketBase:
             await self.executor.run(s2_channel)
 
             logger.info("Exporting Compliance Report.")
-            self.executor.get_compliance_report().export(self.config.report)
+
+            if (self.executor):
+                report = await self.executor.get_compliance_report()
+                report.export(self.config.report)
 
             logger.info("Connection closed.")
 
