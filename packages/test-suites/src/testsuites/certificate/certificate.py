@@ -127,7 +127,7 @@ class ComplianceReport(BaseModel):
         if config.yaml is not None:
             self.export_to_yaml(config.yaml, config.include_test_parameters)
         if config.xml is not None:
-            self.export_to_junit_xml(config.xml)
+            self.export_to_junit_xml(config.xml, config.xml_soft_fail_is_fail)
 
     def export_to_yaml(self, filename, include_test_parameters):
         with open(filename, "w") as output:
@@ -143,7 +143,7 @@ class ComplianceReport(BaseModel):
             return "0.000"
         return f"{seconds:.3f}"
 
-    def export_to_junit_xml(self, filename) -> Optional[str]:
+    def export_to_junit_xml(self, filename, soft_fail_is_fail=True) -> Optional[str]:
         """
         Exports the compliance report to JUnit XML format.
         If filename is provided, writes to the file.
@@ -201,7 +201,9 @@ class ComplianceReport(BaseModel):
                     )
                     if test_case.parameters:
                         failure_element.text = f"Parameters: {test_case.parameters}"
-                elif test_case.status == TestResultStatus.SOFT_FAIL:
+                elif (
+                    test_case.status == TestResultStatus.SOFT_FAIL and soft_fail_is_fail
+                ):
                     failure_element = ET.SubElement(
                         testcase_element,
                         "failure",  # Still a failure for JUnit

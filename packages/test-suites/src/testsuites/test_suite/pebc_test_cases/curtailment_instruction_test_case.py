@@ -205,6 +205,7 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
                     upper_limit=upper,
                     duration=duration,
                     expected_instruction_status=InstructionStatus.SUCCEEDED,
+                    fail_result_status=TestResultStatus.SOFT_FAIL
                 )
 
                 self.add_test_method(
@@ -215,6 +216,7 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
                     upper_limit=upper_limit.start_of_range + 1,
                     duration=duration,
                     expected_instruction_status=InstructionStatus.REJECTED,
+                    fail_result_status=TestResultStatus.SOFT_FAIL
                 )
 
     async def generate_set_limit_range_instruction_tests(self):

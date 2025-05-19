@@ -40,6 +40,7 @@ class CertificationConfig(BaseModel):
 class ReportConfig(BaseModel):
     yaml: Optional[str] = None
     xml: Optional[str] = None
+    xml_soft_fail_is_fail: bool = True
     include_test_parameters: bool = True
 
 
