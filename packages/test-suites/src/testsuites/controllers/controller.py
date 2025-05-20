@@ -10,6 +10,7 @@ from s2python.common import (
     PowerMeasurement,
     ResourceManagerDetails,
 )
+from s2python.version import S2_VERSION
 from s2python.message import S2Message
 from s2python.common import (
     Handshake,
@@ -34,8 +35,12 @@ class Controller(MessageHandler):
 
     messages_received = []
 
+    _handshake_received_event: asyncio.Event
+
     def __init__(self):
         super().__init__()
+
+        self._handshake_received_event = asyncio.Event()
 
     async def handle_message(self, message: S2Message, channel: Optional[S2Channel]):
         if channel is None:
@@ -61,6 +66,36 @@ class Controller(MessageHandler):
 
         return result
 
-    @abc.abstractmethod
-    async def perform_handshake(self, channel: Optional[S2Channel]):
-        pass
+    async def send_handshake(self, channel: S2Channel):
+        if channel is None:
+            raise ValueError("Channel not set.")
+
+        await channel.send_msg_and_await_reception_status(
+            Handshake(
+                message_id=uuid.uuid4(),  # type: ignore
+                role=self.role,
+                supported_protocol_versions=[S2_VERSION],
+            )
+        )
+
+    async def handle_handshake(
+        self,
+        message: Handshake,
+        channel: "S2Channel",
+        send_okay: Awaitable[None],
+    ) -> None:
+
+        if channel is None:
+            raise ValueError("Channel not set.")
+        self._handshake_received_event.set()
+
+        logger.debug(
+            "%s supports S2 protocol versions: %s",
+            message.role,
+            message.supported_protocol_versions,
+        )
+        if message.supported_protocol_versions is None:
+            raise ValueError(
+                "Missing supported protocol versions in handshake message."
+            )
+        await send_okay

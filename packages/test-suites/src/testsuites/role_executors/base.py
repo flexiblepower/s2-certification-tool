@@ -19,9 +19,14 @@ from testsuites.controllers import (
     Controller,
 )
 from connectivity.s2_channel import S2Channel
+from testsuites.util import wait_for_event_or_stop
 
 
 logger = logging.getLogger(__name__)
+
+
+class ExitMainLoopException(Exception):
+    pass
 
 
 class AbstractRoleExecutor(abc.ABC):
@@ -83,7 +88,45 @@ class AbstractRoleExecutor(abc.ABC):
         await self._main_loop_started_event.wait()
         await self.controller.handle_message(message, self.channel)
 
+    async def send_handshake(self):
+        try:
+            if self.channel is None:
+                raise ValueError("Channel is not set.")
+            await self.controller.send_handshake(self.channel)
+            self.test_logger.success("Handshake Message Sent", ident=0)
+        except asyncio.CancelledError:
+            logger.warning("Main loop was cancelled.")
+            raise  # Propagate for TaskGroup
+        except Exception as e:
+            self.test_logger.error(f"Sending Handshake Message Failed: {e}", ident=0)
+            raise ExitMainLoopException("Handshake failed.")
+
+    async def wait_for_handshake(self):
+        try:
+            await wait_for_event_or_stop(
+                self.controller._handshake_received_event,
+                self._stop_event,
+                description="Handshake received event.",
+            )
+            self.test_logger.success("Handshake Received.", ident=0)
+        except asyncio.CancelledError:
+            logger.warning("Main loop was cancelled.")
+            raise  # Propagate for TaskGroup
+        except Exception as e:
+            self.test_logger.error(f"No handshake received: {e}", ident=0)
+            return
+
     @abc.abstractmethod
     async def main_loop(self):
         self._main_loop_started_event.set()
         pass
+
+
+    async def execute_test_suite(self):
+        # Wait until the handshake is complete before starting the testing.
+
+        if self.channel is None:
+            raise ValueError("Channel not set.")
+
+        if self.controller:
+            await self.test_suite.execute(self.channel, self.controller, self.role)

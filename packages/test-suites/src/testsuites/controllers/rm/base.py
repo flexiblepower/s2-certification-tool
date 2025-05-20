@@ -48,28 +48,16 @@ class BaseRMController(Controller):
         send_okay: Awaitable[None],
     ) -> None:
 
-        if channel is None:
-            raise ValueError("Channel not set.")
-
-        logger.debug(
-            "%s supports S2 protocol versions: %s",
-            message.role,
-            message.supported_protocol_versions,
-        )
-        if message.supported_protocol_versions is None:
-            raise ValueError(
-                "Missing supported protocol versions in handshake message."
-            )
+        await super().handle_handshake(message, channel, send_okay)
 
         await channel.send_msg_and_await_reception_status(
             HandshakeResponse(
                 message_id=uuid.uuid4(),
-                selected_protocol_version=message.supported_protocol_versions[0],
+                selected_protocol_version=message.supported_protocol_versions[0],  # type: ignore
             )
         )
-        await send_okay
 
-    async def select_control_type(self, channel: "S2Channel"):
+    async def send_select_control_type(self, channel: "S2Channel"):
         await channel.send_msg_and_await_reception_status(
             # The controller is updated in executor before sending the selection. So we just use the current instance's type.
             SelectControlType(message_id=uuid.uuid4(), control_type=self.control_type)
@@ -90,19 +78,7 @@ class BaseRMController(Controller):
     async def wait_until_rm_details_received(self):
         await self._resource_manager_details_received.wait()
 
-    async def perform_handshake(self, channel: S2Channel):
-        if channel is None:
-            raise ValueError("Channel not set.")
-
-        await channel.send_msg_and_await_reception_status(
-            Handshake(
-                message_id=uuid.uuid4(),  # type: ignore
-                role=self.role,
-                supported_protocol_versions=[S2_VERSION],
-            )
-        )
-
-    async def perform_disconnect(self, channel: "S2Channel"):
+    async def send_session_request_disconnect(self, channel: "S2Channel"):
         await channel.send_msg_and_await_reception_status(
             SessionRequest(
                 message_id=uuid.uuid4(),

@@ -1,23 +1,12 @@
-import datetime
-from enum import Enum
-import json
 import logging
 from typing import Dict, List, Tuple
-import uuid
 
 from testsuites.test_suite.test_suite import TestLogger
 from testsuites.certificate.certificate import (
-    TestSuiteResults,
-    TestResult,
-    ComplianceReport,
     TestResultStatus,
 )
-from connectivity.config import BaseTestConfig, PEBCRMTestConfig
-from testsuites.controllers.controller import Controller
-from testsuites.controllers import PEBCRMController
 from s2python.common import (
     ControlType as ProtocolControlType,
-    PowerMeasurement,
     InstructionStatusUpdate,
     CommodityQuantity,
     NumberRange,
@@ -25,15 +14,11 @@ from s2python.common import (
 )
 from s2python.pebc import (
     PEBCAllowedLimitRange,
-    PEBCInstruction,
     PEBCPowerConstraints,
     PEBCPowerEnvelope,
     PEBCPowerEnvelopeElement,
     PEBCPowerEnvelopeLimitType,
 )
-from testsuites.test_suite.base_test_case import NoSelectionTestCase
-from testsuites.test_suite.test_suite import S2TestCase
-from connectivity.s2_channel import S2Channel
 from .base import PEBCTestCase
 
 from itertools import product
@@ -101,68 +86,8 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
             return
 
         self.assertEqual(status_update.instruction_id, instruction.id)
-        # logger.info("Status Update: %s", status_update)
-        # # TODO: THis could break if multiple status updates are incoming...
-        # if status_update.instruction_id != instruction.id:
-
-        #     self.test_logger.soft_error(
-        #         "Curtailment Test {power_envelope.commodity_quantity}: InstructionStatusUpdate instruction_id does not matches instruction's ID."
-        #     )
-        #     return TestResultStatus.SOFT_FAIL
 
         self.assertEqual(status_update.status_type, expected_instruction_status)
-        # if status_update.status_type != expected_instruction_status:
-        #     self.test_logger.soft_error(
-        #         f"Curtailment Test {power_envelope.commodity_quantity}: Expected Instruction Status of {expected_instruction_status} but received {status_update.status_type}."
-        #     )
-        #     return TestResultStatus.SOFT_FAIL
-        # return TestResultStatus.PASS
-
-    # async def curtail_with_limits(
-    #     self,
-    #     commodity_quantity: CommodityQuantity,
-    #     lower_limit: NumberRange,
-    #     upper_limit: NumberRange,
-    #     duration: int,
-    # ) -> list[TestResultStatus]:
-    #     limits = [
-    #         (lower_limit.start_of_range, upper_limit.start_of_range),
-    #         (lower_limit.start_of_range, upper_limit.end_of_range),
-    #         (lower_limit.end_of_range, upper_limit.start_of_range),
-    #         (lower_limit.end_of_range, upper_limit.end_of_range),
-    #     ]
-
-    #     for upper, lower in limits:
-    #         power_envelope = self.create_power_envelope(
-    #             commodity_quantity=commodity_quantity,
-    #             lower_limit=lower,
-    #             upper_limit=upper,
-    #             duration=duration,
-    #         )
-    #         logger.debug("Curtailing with power envelope: %s", power_envelope)
-
-    #         self.test_logger.info(
-    #             f"Curtailing {power_envelope.commodity_quantity} with upper_limit={upper}, lower_limit={lower}"
-    #         )
-
-    #         status = await self.send_power_envelope(
-    #             power_envelope, InstructionStatus.SUCCEEDED
-    #         )
-    #         statuses.append(status)
-
-    #         power_envelope = self.create_power_envelope(
-    #             commodity_quantity=commodity_quantity,
-    #             lower_limit=lower_limit.end_of_range - 1,
-    #             upper_limit=upper_limit.start_of_range + 1,
-    #             duration=duration,
-    #         )
-
-    #         status = await self.send_power_envelope(
-    #             power_envelope, InstructionStatus.REJECTED
-    #         )
-    #         statuses.append(status)
-
-    #     return statuses
 
     def generate_curtail_commodity_quantity_tests(
         self,
@@ -205,7 +130,7 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
                     upper_limit=upper,
                     duration=duration,
                     expected_instruction_status=InstructionStatus.SUCCEEDED,
-                    fail_result_status=TestResultStatus.SOFT_FAIL
+                    fail_result_status=TestResultStatus.FAIL,
                 )
 
                 self.add_test_method(
@@ -216,7 +141,7 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
                     upper_limit=upper_limit.start_of_range + 1,
                     duration=duration,
                     expected_instruction_status=InstructionStatus.REJECTED,
-                    fail_result_status=TestResultStatus.SOFT_FAIL
+                    fail_result_status=TestResultStatus.FAIL,
                 )
 
     async def generate_set_limit_range_instruction_tests(self):
@@ -247,12 +172,3 @@ class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
         self.test_logger.log_status_list(
             "Curtailment Instruction Test Complete.", statuses, ident=0
         )
-
-        # if TestResultStatus.FAIL in statuses:
-        #     self.name.status = TestResultStatus.FAIL
-        # elif TestResultStatus.SOFT_FAIL in statuses:
-        #     self.name.status = TestResultStatus.SOFT_FAIL
-        # elif TestResultStatus.PASS in statuses:
-        #     self.name.status = TestResultStatus.PASS
-
-        # return TestResultStatus.PASS, None

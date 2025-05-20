@@ -30,29 +30,8 @@ class BaseCEMController(Controller):
 
         self.resource_manager_details = resource_manager_details
 
-        self._handshake_received_event = asyncio.Event()
-
         self.add_handler(Handshake, self.handle_handshake)
 
-    async def handle_handshake(
-        self, message: Handshake, channel: S2Channel, send_okay: Awaitable[None]
-    ):
-        logger.info("Received Handshake message: %s", message)
-        self._handshake_received_event.set()
-
-        await send_okay
-
-    async def perform_handshake(self, channel: S2Channel):
-        if channel is None:
-            raise ValueError("Channel not set.")
-
-        await channel.send_msg_and_await_reception_status(
-            Handshake(
-                message_id=uuid.uuid4(),  # type: ignore
-                role=self.role,
-                supported_protocol_versions=[S2_VERSION],
-            )
-        )
 
     async def send_resource_manager_details(self, channel: S2Channel):
         if self.resource_manager_details is None:
