@@ -12,11 +12,16 @@ class PEBCCEMTestConfig(BaseTestConfig):
     pass
 
 
+class FRBCCEMTestConfig(BaseTestConfig):
+    pass
+
+
 class ControlTypeCEMTestConfig(BaseModel):
     enabled: bool = True
     role: EnergyManagementRole = EnergyManagementRole.CEM
 
     pebc: Optional[PEBCCEMTestConfig]
+    frbc: Optional[FRBCCEMTestConfig]
 
     def get_controller_configs_dics(
         self,

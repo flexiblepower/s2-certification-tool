@@ -23,7 +23,7 @@ from testsuites.controllers import (
     Controller,
     BaseCEMController,
 )
-from .base import AbstractRoleExecutor, ExitMainLoopException
+from .base_role_executor import AbstractRoleExecutor, ExitMainLoopException
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +119,12 @@ class CEMTestExecutor(AbstractRoleExecutor):
 
             await self.wait_for_select_control_type()
 
-            await self.execute_test_suite()
+            await self.controller.after_chosen(self.channel)
 
+            await self.send_handshake()
+            await asyncio.sleep(10)
+
+            # await self.execute_test_suite()
 
         except ExitMainLoopException:
             return

@@ -121,7 +121,6 @@ class AbstractRoleExecutor(abc.ABC):
         self._main_loop_started_event.set()
         pass
 
-
     async def execute_test_suite(self):
         # Wait until the handshake is complete before starting the testing.
 

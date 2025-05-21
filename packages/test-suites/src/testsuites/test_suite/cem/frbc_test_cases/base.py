@@ -1,25 +1,12 @@
-import datetime
-import json
 import logging
-import uuid
 
 from testsuites.certificate.certificate import (
-    TestSuiteResults,
-    TestResult,
     ComplianceReport,
-    TestResultStatus,
 )
-from connectivity.config import FRBCRMTestConfig, PEBCRMTestConfig
+from connectivity.config import FRBCCEMTestConfig
 from testsuites.controllers import FRBCRMController
-from s2python.common import PowerMeasurement, ControlType as ProtocolControlType
-from s2python.frbc import (
-    FRBCActuatorStatus,
-    FRBCStorageDescription,
-    FRBCStorageStatus,
-    FRBCSystemDescription,
-    FRBCUsageForecast,
-)
-from testsuites.test_suite.base_test_case import NoSelectionTestCase
+from s2python.common import ControlType as ProtocolControlType
+from src.testsuites.test_suite.rm.base_test_case import NoSelectionTestCase
 from testsuites.test_suite.test_suite import S2TestCase, TestLogger
 from connectivity.s2_channel import S2Channel
 
@@ -32,31 +19,31 @@ class FRBCTestCase(NoSelectionTestCase):
     TIMEOUT = 5
 
     controller: FRBCRMController
-    config: FRBCRMTestConfig
+    config: FRBCCEMTestConfig
 
     def __init__(
         self,
-        config: FRBCRMTestConfig,
+        config: FRBCCEMTestConfig,
         channel: S2Channel,
         controller: FRBCRMController,
         report: ComplianceReport,
-        logger: TestLogger
+        logger: TestLogger,
     ):
         super().__init__(config, channel, controller, report, logger)
 
     async def setup(self):
-        await self.controller._system_description_received.wait()
+        await self.controller._system_description_sent.wait()
 
-    async def wait_for_system_description(self):
+    async def wait_for_system_description_sent(self):
         system_description = self.controller.system_description
         if (
             system_description is None
-            and not self.controller._system_description_received.is_set()
+            and not self.controller._system_description_sent.is_set()
         ):
             logger.debug(
                 "Waiting. %s, %s",
                 system_description,
-                self.controller._system_description_received,
+                self.controller._system_description_sent,
             )
-            await self.controller._system_description_received.wait()
+            await self.controller._system_description_sent.wait()
         logger.debug("System description is set.")

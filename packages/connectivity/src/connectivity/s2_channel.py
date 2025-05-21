@@ -64,7 +64,8 @@ class S2Channel(Channel[S2Message, str]):
         self.message_queue = asyncio.Queue()
 
     async def send(self, message: S2Message):
-        str_msg = message.model_dump_json()
+        # str_msg = message.model_dump_json()
+        str_msg = message.to_json()
 
         return await self.connection.send(str_msg)
 

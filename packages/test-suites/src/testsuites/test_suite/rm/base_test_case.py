@@ -1,4 +1,4 @@
-from ..certificate.certificate import (
+from ...certificate.certificate import (
     TestSuiteResults,
     ComplianceReport,
     TestResultStatus,
@@ -12,7 +12,6 @@ from s2python.common import (
     ControlType as ProtocolControlType,
 )
 from connectivity.config import BaseTestConfig
-from connectivity.s2_channel import S2Channel
 
 import logging
 

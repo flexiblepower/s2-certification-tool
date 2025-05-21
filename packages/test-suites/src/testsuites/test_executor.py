@@ -23,17 +23,13 @@ from s2python.message import S2Message
 
 from testsuites.util import wait_for_event_or_stop
 from testsuites.certificate.certificate import ComplianceReport
-from testsuites.test_suite.test_suite import TestSuite, TestSuiteBuilder
 from testsuites.test_suite import (
-    ReceivePowerMeasurementTestCase,
-    ReceivePowerForecastTestCase,
+    TestSuiteBuilder,
+    build_rm_test_suite,
+    build_cem_test_suite,
 )
 from testsuites.test_logger import (
     AbstractTestLogger,
-)
-from testsuites.test_suite.pebc_test_cases import (
-    PEBCCurtailmentInstructionTestCase,
-    PEBCPowerConstraintsTestCase,
 )
 from testsuites.controllers import (
     Controller,
@@ -42,12 +38,6 @@ from testsuites.controllers import (
     PEBCRMController,
     FRBCRMController,
     FRBCCEMCOntroller,
-)
-from testsuites.test_suite.frbc_test_cases import (
-    FRBCActuatorStatusTestCase,
-    FRBCSystemDescriptionTestCase,
-    FRBCStorageStatusTestCase,
-    FRBCUsageForecastTestCase,
 )
 
 
@@ -308,33 +298,19 @@ def create_test_executor(
     report = ComplianceReport(timestamp=datetime.now(), device=config.device_details)
 
     rm_controllers = create_rm_controllers_dict_with_config(config.roles.rm)
-    rm_test_suite = (
-        TestSuiteBuilder(config.roles, report, test_logger)
-        # Not Controllable Test Cases
-        .with_test_case(ReceivePowerForecastTestCase)
-        .with_test_case(ReceivePowerMeasurementTestCase)
-        # PEBC Test Cases
-        .with_test_case(PEBCPowerConstraintsTestCase)
-        .with_test_case(PEBCCurtailmentInstructionTestCase)
-        # FRBC Test Cases
-        .with_test_case(FRBCUsageForecastTestCase)
-        .with_test_case(FRBCActuatorStatusTestCase)
-        .with_test_case(FRBCSystemDescriptionTestCase)
-        .with_test_case(FRBCStorageStatusTestCase)
-        .build()
-    )
+    rm_test_suite_builder = build_rm_test_suite(config, report, test_logger)
     rm_role_executor = RMTestExecutor(
         available_control_types=rm_controllers,
-        test_suite=rm_test_suite,
+        test_suite=rm_test_suite_builder.build(),
         report=report,
         test_logger=test_logger,
     )
 
     cem_controllers = create_cem_controllers_dict_with_config(config.roles.cem)
-    cem_test_suite = TestSuiteBuilder(config.roles, report, test_logger).build()
+    cem_test_suite_builder = build_cem_test_suite(config, report, test_logger)
     cem_role_executor = CEMTestExecutor(
         available_control_types=cem_controllers,
-        test_suite=cem_test_suite,
+        test_suite=cem_test_suite_builder.build(),
         report=report,
         test_logger=test_logger,
     )

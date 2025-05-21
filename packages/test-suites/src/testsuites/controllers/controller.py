@@ -99,3 +99,9 @@ class Controller(MessageHandler):
                 "Missing supported protocol versions in handshake message."
             )
         await send_okay
+
+    async def after_chosen(self, channel: Optional[S2Channel]):
+        """
+        This method should be run after the controller is set
+        and should send any init messages for that control type."""
+        pass

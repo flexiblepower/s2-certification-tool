@@ -28,6 +28,9 @@ from s2python.common import (
     Transition,
     Duration,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class FRBCCEMCOntroller(BaseCEMController):
@@ -148,4 +151,8 @@ class FRBCCEMCOntroller(BaseCEMController):
         if channel is None:
             raise ValueError("Channel not set.")
 
+        logger.info("Sending FRBC system description")
         await channel.send_msg_and_await_reception_status(self.system_description)
+
+    async def after_chosen(self, channel: Optional[S2Channel]):
+        await self.send_frbc_system_description(channel)
