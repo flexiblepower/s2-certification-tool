@@ -32,18 +32,18 @@ class FRBCTestCase(NoSelectionTestCase):
         super().__init__(config, channel, controller, report, logger)
 
     async def setup(self):
-        await self.controller._system_description_sent.wait()
+        await self.controller._system_description_received.wait()
 
     async def wait_for_system_description(self):
         system_description = self.controller.system_description
         if (
             system_description is None
-            and not self.controller._system_description_sent.is_set()
+            and not self.controller._system_description_received.is_set()
         ):
             logger.debug(
                 "Waiting. %s, %s",
                 system_description,
-                self.controller._system_description_sent,
+                self.controller._system_description_received,
             )
-            await self.controller._system_description_sent.wait()
+            await self.controller._system_description_received.wait()
         logger.debug("System description is set.")

@@ -98,7 +98,9 @@ class TestSuiteResults(BaseModel):
         if not include_test_parameters:
             ex = {"parameters"}
 
-        dump["tests"] = [suite.model_dump(exclude=ex) for suite in self.tests]
+        dump["tests"] = [
+            suite.model_dump(exclude=ex, exclude_none=True) for suite in self.tests
+        ]
 
         return dump
 
@@ -117,7 +119,9 @@ class ComplianceReport(BaseModel):
         dump = self.model_dump(exclude_none=True, exclude={"test_suites"})
 
         dump["test_suites"] = [
-            suite.model_dump(include_test_parameters=include_test_parameters)
+            suite.model_dump(
+                include_test_parameters=include_test_parameters, exclude_none=True
+            )
             for suite in self.test_suites
         ]
 
@@ -206,7 +210,7 @@ class ComplianceReport(BaseModel):
                 ):
                     failure_element = ET.SubElement(
                         testcase_element,
-                        "failure",  # Still a failure for JUnit
+                        "failure",
                         message=f"[SOFT FAIL] {test_case.message or 'Test soft failed'}",
                         type="SoftFailure",
                     )

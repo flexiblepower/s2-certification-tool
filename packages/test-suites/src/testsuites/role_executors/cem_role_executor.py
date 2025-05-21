@@ -121,10 +121,9 @@ class CEMTestExecutor(AbstractRoleExecutor):
 
             await self.controller.after_chosen(self.channel)
 
-            await self.send_handshake()
-            await asyncio.sleep(10)
+            await self.execute_test_suite()
 
-            # await self.execute_test_suite()
+            await asyncio.sleep(30)
 
         except ExitMainLoopException:
             return

@@ -26,7 +26,10 @@ class ControlTypeCEMTestConfig(BaseModel):
     def get_controller_configs_dics(
         self,
     ) -> Dict[ProtocolControlType, BaseTestConfig | None]:
-        return {ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL: self.pebc}
+        return {
+            ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL: self.pebc,
+            ProtocolControlType.FILL_RATE_BASED_CONTROL: self.frbc,
+        }
 
     def get_control_type_config(self, control_type: ProtocolControlType):
         return self.get_controller_configs_dics()[control_type]

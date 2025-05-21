@@ -16,7 +16,7 @@ from s2python.message import S2Message
 from testsuites.controllers import (
     BaseRMController,
 )
-from .base import AbstractRoleExecutor, ExitMainLoopException
+from .base_role_executor import AbstractRoleExecutor, ExitMainLoopException
 
 logger = logging.getLogger(__name__)
 

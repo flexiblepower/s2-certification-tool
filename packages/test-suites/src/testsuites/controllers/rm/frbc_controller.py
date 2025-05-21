@@ -15,12 +15,12 @@ class FRBCRMController(BaseRMController):
     control_type = ProtocolControlType.FILL_RATE_BASED_CONTROL
     system_description: Optional[FRBCSystemDescription] = None
 
-    _system_description_sent: asyncio.Event
+    _system_description_received: asyncio.Event
 
     def __init__(self):
         super().__init__()
         self.system_description = None
-        self._system_description_sent = asyncio.Event()
+        self._system_description_received = asyncio.Event()
 
         self.add_handler(FRBCSystemDescription, self.handle_system_description_message)
 
@@ -32,6 +32,6 @@ class FRBCRMController(BaseRMController):
 
         logger.info("Received FRBC System Description.")
         self.system_description = message
-        self._system_description_sent.set()
+        self._system_description_received.set()
 
         await send_okay

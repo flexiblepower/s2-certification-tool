@@ -37,7 +37,7 @@ from testsuites.controllers import (
     BaseCEMController,
     PEBCRMController,
     FRBCRMController,
-    FRBCCEMCOntroller,
+    FRBCCEMController,
 )
 
 
@@ -281,7 +281,7 @@ def create_cem_controllers_dict_with_config(
     )
 
     controllers[ProtocolControlType.NO_SELECTION] = BaseCEMController(rm_details)
-    controllers[ProtocolControlType.FILL_RATE_BASED_CONTROL] = FRBCCEMCOntroller(
+    controllers[ProtocolControlType.FILL_RATE_BASED_CONTROL] = FRBCCEMController(
         rm_details
     )
 

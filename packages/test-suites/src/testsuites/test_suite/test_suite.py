@@ -217,6 +217,8 @@ class S2TestCase(unittest.TestCase):
                 **{f"arg_{index}": str(value) for index, value in enumerate(args)},
                 **{key: str(value) for key, value in kwargs.items()},
             }
+            if report_parameters == {}:
+                report_parameters = None
 
             result = TestResult(
                 name=name,
