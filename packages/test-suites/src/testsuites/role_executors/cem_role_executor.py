@@ -23,7 +23,11 @@ from testsuites.controllers import (
     Controller,
     BaseCEMController,
 )
-from .base_role_executor import AbstractRoleExecutor, ExitMainLoopException
+from .base_role_executor import (
+    AbstractRoleExecutor,
+    ExitMainLoopException,
+    execute_as_test,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +57,10 @@ class CEMTestExecutor(AbstractRoleExecutor):
             await self.handle_select_control_type(message)
         return await super().process_message(message)
 
+    @execute_as_test(
+        test_name="9.2.1. Update Resource Manager Details",
+        error_message_prefix="Error whilst sending RM Details:",
+    )
     async def send_resource_manager_details(self):
         try:
             if self.channel is None:
@@ -94,7 +102,7 @@ class CEMTestExecutor(AbstractRoleExecutor):
             logger.warning("Main loop was cancelled.")
             raise  # Propagate for TaskGroup
         except Exception as e:
-            self.test_logger.error(f"No handshake received: {e}", ident=0)
+            self.test_logger.error(f"No handshake response received: {e}", ident=0)
             return
 
     async def main_loop(self):
@@ -105,10 +113,9 @@ class CEMTestExecutor(AbstractRoleExecutor):
             if self.channel is None:
                 raise ValueError("Channel not set.")
 
-            logger.info("Test suite starting.")
+            self.test_logger.info("Test suite starting.")
 
             await self.send_handshake()
-
             await self.wait_for_handshake()
 
             await self.wait_for_handshake_response()
@@ -123,7 +130,7 @@ class CEMTestExecutor(AbstractRoleExecutor):
 
             await self.execute_test_suite()
 
-            await asyncio.sleep(30)
+            await asyncio.sleep(5)
 
         except ExitMainLoopException:
             return

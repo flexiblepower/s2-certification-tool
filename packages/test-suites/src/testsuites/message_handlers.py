@@ -24,7 +24,19 @@ class S2MessageAwaiter:
     def __init__(self):
         self.awaiting = {}
 
-    async def wait_for_message(self, message_type: Type[S2Message], timeout: float):
+    async def wait_for_message(
+        self, message_type: Type[S2Message], timeout: float
+    ) -> S2Message:
+        """
+        Waits for a given message type to be received.
+
+        Args:
+            message_type (type(S2Message)): The S2 Message Class that will be waited for. The return of this function will be a message of that type (if one is received).
+            timeout (float): Time after which a TimeOut error will be thrown
+        Returns:
+            S2Message of type `message_type`. Unfortunately I can't get the type inference to be more granular on the output type.
+        """
+
         # Incase we have multiple tasks waiting for the same message.
         # Not sure if this going to be a possible scenario, but worth covering anyways.
         if message_type not in self.awaiting or self.awaiting[message_type][0].is_set():
@@ -33,7 +45,12 @@ class S2MessageAwaiter:
         else:
             event = self.awaiting[message_type][0]
 
-        await asyncio.wait_for(event.wait(), timeout)
+        try:
+            await asyncio.wait_for(event.wait(), timeout)
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"No {message_type} message received within the specified timeout window"
+            )
 
         message = self.awaiting[message_type][1]
         if message is None:
@@ -55,9 +72,7 @@ class S2MessageAwaiter:
 
             event.set()
         else:
-            logger.info(
-                "Received %s message. Nothing waiting for it.", type(message)
-            )
+            logger.info("Received %s message. Nothing waiting for it.", type(message))
 
 
 async def send_okay_message(channel: S2Channel, message: S2Message):

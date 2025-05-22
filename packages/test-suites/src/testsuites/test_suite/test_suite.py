@@ -5,10 +5,21 @@ import functools
 import inspect
 import logging
 import time
-from typing import TYPE_CHECKING, Callable, Coroutine, Dict, List, Optional, Tuple, Type
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Coroutine,
+    Dict,
+    List,
+    Optional,
+    ParamSpec,
+    Tuple,
+    Type,
+    TypeVar,
+)
 import unittest
 
-from testsuites.envelope_models import LogMessage, LogMessageEnvelope
 from testsuites.certificate.certificate import (
     TestSuiteResults,
     TestResult,
@@ -31,6 +42,10 @@ from testsuites.test_logger import (
 from connectivity.s2_channel import S2Channel
 
 logger = logging.getLogger(__name__)
+
+
+class NotApplicableTestException(Exception):
+    """Raise in a test case if the situation has not arisen to properly test this."""
 
 
 class S2TestCase(unittest.TestCase):
@@ -170,6 +185,52 @@ class S2TestCase(unittest.TestCase):
         """Override in subclass for per-test teardown."""
         pass
 
+    async def run_test(
+        self, name: str, method: Callable, args: tuple, kwargs: dict, fail_result_status
+    ) -> TestResult:
+        case_start_time = time.time()
+        status = fail_result_status
+        message: Optional[str] = None
+        try:
+            await self.setup()
+            try:
+                await method(*args, **kwargs)
+            finally:
+                await self.teardown()
+
+            self.test_logger.success(f"{name}")
+            status = TestResultStatus.PASS
+        except NotApplicableTestException as e:
+            logger.info("NA Exception raised.")
+            message = str(e)
+            status = TestResultStatus.N_A
+        except AssertionError as e:
+            message = str(e)
+            self.test_logger.error(f"Assertion error: {e}")
+        except Exception as e:
+            message = str(e)
+            self.test_logger.error(f"Error: {e}")
+
+        case_end_time = time.time()
+
+        # Convert the test args to a dict to be added to the report.
+        report_parameters = {
+            **{f"arg_{index}": str(value) for index, value in enumerate(args)},
+            **{key: str(value) for key, value in kwargs.items()},
+        }
+        if report_parameters == {}:
+            report_parameters = None
+
+        result = TestResult(
+            name=name,
+            status=status,
+            duration=round(case_end_time - case_start_time, 2),
+            message=message,
+            parameters=report_parameters,
+        )
+
+        return result
+
     async def execute(self) -> TestSuiteResults:
         """Execute the tests from this test case and returns the result information for the report.
 
@@ -183,7 +244,7 @@ class S2TestCase(unittest.TestCase):
         )
         start_time = time.time()
 
-        # Generates the parametarised test cases and adds them to the tests list.
+        # Generates the parametrized test cases and adds them to the tests list.
         # This method is overridden in subclasses for generating the test
         await self.generate_tests()
 
@@ -191,42 +252,7 @@ class S2TestCase(unittest.TestCase):
 
         # Now we run each test case that is in the tests list with the args provided.
         for name, method, args, kwargs, fail_result_status in self.tests:
-            case_start_time = time.time()
-            status = fail_result_status
-            message: Optional[str] = None
-            try:
-                await self.setup()
-                try:
-                    await method(*args, **kwargs)
-                finally:
-                    await self.teardown()
-
-                self.test_logger.success(f"{name}")
-                status = TestResultStatus.PASS
-            except AssertionError as e:
-                message = str(e)
-                self.test_logger.error(f"Assertion error: {e}")
-            except Exception as e:
-                message = str(e)
-                self.test_logger.error(f"Error error: {e}")
-
-            case_end_time = time.time()
-
-            # Convert the test args to a dict to be added to the report.
-            report_parameters = {
-                **{f"arg_{index}": str(value) for index, value in enumerate(args)},
-                **{key: str(value) for key, value in kwargs.items()},
-            }
-            if report_parameters == {}:
-                report_parameters = None
-
-            result = TestResult(
-                name=name,
-                status=status,
-                duration=round(case_end_time - case_start_time, 2),
-                message=message,
-                parameters=report_parameters,
-            )
+            result = await self.run_test(name, method, args, kwargs, fail_result_status)
 
             test_suite_result.add_test_result(result)
 
@@ -237,8 +263,6 @@ class S2TestCase(unittest.TestCase):
         duration = round(end_time - start_time, 2)
 
         test_suite_result.duration = duration
-        # self.logger.info("Test case %s complete.", self.__class__.__name__)
-        # self.logger.info("-" * 20)
 
         return test_suite_result
 

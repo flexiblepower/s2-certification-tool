@@ -28,14 +28,13 @@ class NoSelectionTestCase(S2TestCase):
     controller: BaseRMController
     config: BaseTestConfig
 
+
+class UpdateResourceManagerDetailsTestCase(NoSelectionTestCase):
+    name = "9.2.1. Update Resource Manager Details"
+
     async def test_validate_rm_details_received(self):
-        # if self.controller.resource_manager_details is not None:
-        #     self.name.add_parameter(
-        #         "ResourceManagerDetails Received.", TestResultStatus.PASS
-        #     )
-        #     self.name.add_parameter(
-        #         "ResourceManagerDetails Valid.", TestResultStatus.PASS
-        #     )
+
+        self.assertIsNotNone(self.controller.resource_manager_details)
 
         self.test_logger.success("Resource manager details received.")
 

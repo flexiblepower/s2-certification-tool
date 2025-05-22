@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from typing import Awaitable
+from typing import Awaitable, Optional
 
 
 from s2python.version import S2_VERSION
@@ -25,6 +25,8 @@ class BaseCEMController(Controller):
     role = EnergyManagementRole.RM
     control_type = ProtocolControlType.NO_SELECTION
 
+    power_measurements: list[PowerMeasurement] = []
+
     def __init__(self, resource_manager_details: ResourceManagerDetails):
         super().__init__()
 
@@ -32,8 +34,17 @@ class BaseCEMController(Controller):
 
         self.add_handler(Handshake, self.handle_handshake)
 
-
     async def send_resource_manager_details(self, channel: S2Channel):
         if self.resource_manager_details is None:
             raise ValueError("Resource Manager Details must be set.")
         await channel.send_msg_and_await_reception_status(self.resource_manager_details)
+
+    async def send_power_measurement(
+        self, channel: Optional[S2Channel], power_measurement: PowerMeasurement
+    ):
+        if channel is None:
+            raise ValueError("Channel not set.")
+
+        await channel.send_msg_and_await_reception_status(power_measurement)
+
+        self.power_measurements.append(power_measurement)

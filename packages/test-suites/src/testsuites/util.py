@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from typing import Dict
 
@@ -44,3 +44,7 @@ async def wait_for_event_or_stop(
         except asyncio.CancelledError:
             logger.info(f"Task cancelled while waiting for {description}.")
             return False
+
+
+def current_timezone_time():
+    return datetime.now(tz=timezone.utc)

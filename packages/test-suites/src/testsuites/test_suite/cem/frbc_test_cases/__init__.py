@@ -1,1 +1,2 @@
-from .system_description import FRBCSystemDescriptionTestCase
+from .ev_scenario import FRBCElectricVehicleScenarioTestCase
+from .heat_pump_scenario import FRBCHeatPumpScenarioTestCase

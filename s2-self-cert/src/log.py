@@ -27,7 +27,7 @@ def get_log_config(test_log_file_name=None) -> Dict:
             "plain": {
                 "()": "logging.Formatter",
                 "fmt": "%(message)s",
-            }
+            },
         },
         "handlers": {
             "console": {
@@ -71,7 +71,7 @@ def get_log_config(test_log_file_name=None) -> Dict:
                 "propagate": False,
             },
             "messages": {
-                "handlers": ["messages-handler", "messages-file-handler"],
+                "handlers": ["messages-file-handler"],
                 "level": "DEBUG",
                 "propagate": False,
             },

@@ -1,7 +1,9 @@
 import abc
 import asyncio
+import functools
 import logging
-from typing import Dict, Optional
+import time
+from typing import Any, Callable, Coroutine, Dict, Optional, ParamSpec, TypeVar
 
 from s2python.common import (
     ControlType as ProtocolControlType,
@@ -10,7 +12,12 @@ from s2python.common import (
 from s2python.message import S2Message
 
 
-from testsuites.certificate.certificate import ComplianceReport
+from testsuites.certificate.certificate import (
+    ComplianceReport,
+    TestResult,
+    TestResultStatus,
+    TestSuiteResults,
+)
 from testsuites.test_suite.test_suite import TestSuite, TestSuiteBuilder
 from testsuites.test_logger import (
     AbstractTestLogger,
@@ -41,6 +48,7 @@ class AbstractRoleExecutor(abc.ABC):
 
     report: ComplianceReport
     test_logger: AbstractTestLogger
+    generic_tasks_test_suite_result = TestSuiteResults(name="9.2. Generic Tasks")
 
     _handshake_received_event: asyncio.Event
     _main_loop_started_event: asyncio.Event
@@ -119,7 +127,6 @@ class AbstractRoleExecutor(abc.ABC):
     @abc.abstractmethod
     async def main_loop(self):
         self._main_loop_started_event.set()
-        pass
 
     async def execute_test_suite(self):
         # Wait until the handshake is complete before starting the testing.
@@ -129,3 +136,72 @@ class AbstractRoleExecutor(abc.ABC):
 
         if self.controller:
             await self.test_suite.execute(self.channel, self.controller, self.role)
+
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def execute_as_test(
+    test_name: str,
+    error_message_prefix: str,
+    success_log_ident: int = 0,
+    error_log_ident: int = 0,
+):
+    """
+    Decorator to handle common test step logic including timing,
+    result status, error handling, and reporting.
+    """
+
+    def decorator(
+        func: Callable[P, Coroutine[Any, Any, R]],
+    ) -> Callable[P, Coroutine[Any, Any, R | None]]:
+        @functools.wraps(func)
+        async def wrapper(
+            self_obj: AbstractRoleExecutor, *args: P.args, **kwargs: P.kwargs
+        ) -> R | None:
+            start_time = time.time()
+            status = TestResultStatus.FAIL
+            message = None
+            return_value = None
+
+            try:
+                # Execute the specific test logic
+                return_value = await func(self_obj, *args, **kwargs)  # type: ignore
+
+                # Pass if no errors while running test
+                status = TestResultStatus.PASS
+            except asyncio.CancelledError:
+                # Propagate cancellation
+                raise
+            except ExitMainLoopException as e:
+                # If the test logic itself raises ExitMainLoopException,
+                # log it and ensure it's the message.
+                self_obj.test_logger.error(
+                    f"{error_message_prefix}: {e}", ident=error_log_ident
+                )
+                message = str(e)
+                raise  # Re-raise to be caught by outer loops if necessary
+            except Exception as e:
+                self_obj.test_logger.error(
+                    f"{error_message_prefix}: {e}", ident=error_log_ident
+                )
+                message = str(e)
+                # Consistently raise ExitMainLoopException for other errors
+                # to ensure the main loop exits as in the original code.
+                raise ExitMainLoopException(f"{error_message_prefix}: {e}") from e
+            finally:
+                end_time = time.time()
+                result = TestResult(
+                    name=test_name,
+                    message=message,
+                    status=status,
+                    duration=round(end_time - start_time, 2),
+                )
+                self_obj.generic_tasks_test_suite_result.add_test_result(result)
+
+            return return_value  # Return the result of the original function if any
+
+        return wrapper  # type: ignore
+
+    return decorator

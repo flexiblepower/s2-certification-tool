@@ -36,14 +36,15 @@ class TestResult(BaseModel):
 
 class TestSuiteResults(BaseModel):
     name: str
-    control_type: ProtocolControlType
+    control_type: Optional[ProtocolControlType] = None
     duration: Optional[float] = None
     status: TestResultStatus = TestResultStatus.PASS
-    tests: List[TestResult] = []
+    tests: Dict[str, TestResult] = {}
 
     def add_test_result(self, result: TestResult):
 
-        self.tests.append(result)
+        self.tests[result.name] = result
+        # self.tests.append(result)
 
         if result.status in [TestResultStatus.N_A, TestResultStatus.PASS]:
             """No change to the test status."""
@@ -63,10 +64,14 @@ class TestSuiteResults(BaseModel):
     def serializer_control_type(self, control_type: ProtocolControlType):
         return control_type.name
 
+    @field_serializer("tests")
+    def serializer_tests(self, tests: Dict[str, TestResult]):
+        return list(tests.values())
+
     @property
     def count_passed(self, include_soft_fail=False):
         count = 0
-        for test in self.tests:
+        for test in self.tests.values():
             if test.status == TestResultStatus.PASS:
                 count += 1
             elif include_soft_fail and test.status == TestResultStatus.SOFT_FAIL:
@@ -76,7 +81,7 @@ class TestSuiteResults(BaseModel):
     @property
     def count_failed(self, include_soft_fail=True):
         count = 0
-        for test in self.tests:
+        for test in self.tests.values():
             if test.status == TestResultStatus.FAIL:
                 count += 1
             elif include_soft_fail and test.status == TestResultStatus.SOFT_FAIL:
@@ -86,7 +91,7 @@ class TestSuiteResults(BaseModel):
     @property
     def count_skipped(self):
         count = 0
-        for test in self.tests:
+        for test in self.tests.values():
             if test.status == TestResultStatus.N_A:
                 count += 1
         return count
@@ -99,8 +104,12 @@ class TestSuiteResults(BaseModel):
             ex = {"parameters"}
 
         dump["tests"] = [
-            suite.model_dump(exclude=ex, exclude_none=True) for suite in self.tests
+            suite.model_dump(exclude=ex, exclude_none=True)
+            for suite in self.tests.values()
         ]
+        # dump["tests"] = [
+        #     suite.model_dump(exclude=ex, exclude_none=True) for suite in self.tests
+        # ]
 
         return dump
 
@@ -187,7 +196,7 @@ class ComplianceReport(BaseModel):
                 time=self._format_duration_xml(suite_duration),
             )
 
-            for test_case in suite.tests:
+            for test_case in suite.tests.values():
                 testcase_element = ET.SubElement(
                     testsuite_element,
                     "testcase",

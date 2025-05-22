@@ -13,7 +13,11 @@ from s2python.frbc import (
     FRBCOperationModeElement,
     FRBCInstruction,
     FRBCActuatorStatus,
+    FRBCUsageForecast,
+    FRBCStorageStatus,
 )
+
+from testsuites.util import current_timezone_time
 from .base import BaseCEMController
 from connectivity.s2_channel import S2Channel
 
@@ -32,6 +36,8 @@ from s2python.common import (
     Duration,
     InstructionStatusUpdate,
     InstructionStatus,
+    RevokeObject,
+    RevokableObjects,
 )
 import logging
 
@@ -42,7 +48,11 @@ class FRBCCEMController(BaseCEMController):
     control_type = ProtocolControlType.FILL_RATE_BASED_CONTROL
     system_description: Optional[FRBCSystemDescription] = None
 
-    actuator_status: Optional[FRBCActuatorStatus]
+    leakage_behaviour: Optional[FRBCLeakageBehaviour] = None
+
+    usage_forecast: Optional[FRBCUsageForecast] = None
+
+    actuator_status: dict[uuid.UUID, FRBCActuatorStatus] = {}
 
     def __init__(self, resource_manager_details: ResourceManagerDetails):
         super().__init__(resource_manager_details)
@@ -57,6 +67,23 @@ class FRBCCEMController(BaseCEMController):
         await channel.send_msg_and_await_reception_status(system_description)
         self.system_description = system_description
 
+    async def revoke_frbc_system_description(self, channel: Optional[S2Channel]):
+        if channel is None:
+            raise ValueError("Channel not set.")
+
+        if self.system_description is None:
+            raise ValueError("No System Description is set.")
+
+        await channel.send_msg_and_await_reception_status(
+            RevokeObject(
+                message_id=uuid.uuid4(),
+                object_id=self.system_description.message_id,
+                object_type=RevokableObjects.FRBC_SystemDescription,
+            )
+        )
+
+        self.system_description = None
+
     async def send_frbc_leakage_behavior(
         self, channel: Optional[S2Channel], leakage_behaviour: FRBCLeakageBehaviour
     ):
@@ -64,6 +91,48 @@ class FRBCCEMController(BaseCEMController):
             raise ValueError("Channel not set.")
 
         await channel.send_msg_and_await_reception_status(leakage_behaviour)
+
+        self.leakage_behaviour = leakage_behaviour
+
+    async def revoke_leakage_behaviour(self, channel: Optional[S2Channel]):
+        if channel is None:
+            raise ValueError("Channel not set.")
+
+        raise NotImplementedError(
+            "Revoke FRBC Leakage Behaviour Message not implemented in S2 Python."
+        )
+
+        self.leakage_behaviour = None
+
+    async def send_frbc_usage_forecast(
+        self, channel: Optional[S2Channel], forecast: FRBCUsageForecast
+    ):
+        if channel is None:
+            raise ValueError("Channel not set.")
+
+        await channel.send_msg_and_await_reception_status(forecast)
+
+        self.usage_forecast
+
+    async def send_actuator_status(
+        self, channel: Optional[S2Channel], actuator_status: FRBCActuatorStatus
+    ):
+        if channel is None:
+            raise ValueError("Channel not set.")
+
+        await channel.send_msg_and_await_reception_status(actuator_status)
+
+        self.actuator_status[actuator_status.actuator_id] = actuator_status
+
+    async def send_storage_status(
+        self, channel: Optional[S2Channel], storage_status: FRBCStorageStatus
+    ):
+        if channel is None:
+            raise ValueError("Channel not set.")
+
+        await channel.send_msg_and_await_reception_status(storage_status)
+
+        self.storage_status = storage_status
 
     async def handle_instruction(
         self,
@@ -78,6 +147,6 @@ class FRBCCEMController(BaseCEMController):
                 instruction_id=message.id,
                 message_id=uuid.uuid4(),
                 status_type=InstructionStatus.SUCCEEDED,
-                timestamp=datetime.datetime.now(tz=datetime.timezone.utc),
+                timestamp=current_timezone_time(),
             )
         )
