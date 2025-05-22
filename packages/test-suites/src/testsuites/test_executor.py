@@ -34,10 +34,12 @@ from testsuites.test_logger import (
 from testsuites.controllers import (
     Controller,
     BaseRMController,
-    BaseCEMController,
     PEBCRMController,
     FRBCRMController,
+    BaseCEMController,
+    NotControllableCEMController,
     FRBCCEMController,
+    PEBCCEMController,
 )
 
 
@@ -281,7 +283,13 @@ def create_cem_controllers_dict_with_config(
     )
 
     controllers[ProtocolControlType.NO_SELECTION] = BaseCEMController(rm_details)
+    controllers[ProtocolControlType.NOT_CONTROLABLE] = NotControllableCEMController(
+        rm_details
+    )
     controllers[ProtocolControlType.FILL_RATE_BASED_CONTROL] = FRBCCEMController(
+        rm_details
+    )
+    controllers[ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL] = PEBCCEMController(
         rm_details
     )
 
@@ -309,7 +317,7 @@ def create_test_executor(
     cem_controllers = create_cem_controllers_dict_with_config(config.roles.cem)
     cem_test_suite_builder = build_cem_test_suite(config, report, test_logger)
     cem_role_executor = CEMTestExecutor(
-        available_control_types=cem_controllers,
+        controllers=cem_controllers,
         test_suite=cem_test_suite_builder.build(),
         report=report,
         test_logger=test_logger,

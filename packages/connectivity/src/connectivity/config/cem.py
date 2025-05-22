@@ -20,13 +20,15 @@ class ControlTypeCEMTestConfig(BaseModel):
     enabled: bool = True
     role: EnergyManagementRole = EnergyManagementRole.CEM
 
-    pebc: Optional[PEBCCEMTestConfig]
-    frbc: Optional[FRBCCEMTestConfig]
+    not_controllable: Optional[BaseTestConfig] = None
+    pebc: Optional[PEBCCEMTestConfig] = None
+    frbc: Optional[FRBCCEMTestConfig] = None
 
     def get_controller_configs_dics(
         self,
     ) -> Dict[ProtocolControlType, BaseTestConfig | None]:
         return {
+            ProtocolControlType.NOT_CONTROLABLE: self.not_controllable,
             ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL: self.pebc,
             ProtocolControlType.FILL_RATE_BASED_CONTROL: self.frbc,
         }

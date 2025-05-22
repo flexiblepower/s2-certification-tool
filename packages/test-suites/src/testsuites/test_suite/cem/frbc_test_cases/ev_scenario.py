@@ -248,7 +248,7 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
                 "Update Power Measurement",
                 self.test_update_power_measurement,
                 power_measurement,
-                10,
+                2,
             )
 
         self.add_test_method("Wait for instruction", self.wait_for_instruction, 0)

@@ -38,15 +38,19 @@ class CEMTestExecutor(AbstractRoleExecutor):
 
     def __init__(
         self,
-        available_control_types: Dict[ProtocolControlType, Controller],
+        controllers: Dict[ProtocolControlType, Controller],
         test_suite: TestSuite,
         report: ComplianceReport,
         test_logger: AbstractTestLogger,
     ) -> None:
-        super().__init__(available_control_types, test_suite, report, test_logger)
+        super().__init__(controllers, test_suite, report, test_logger)
 
         self._control_type_selected_event = asyncio.Event()
 
+    @execute_as_test(
+        test_name="9.2.2. Activate Control Type",
+        error_message_prefix="Failed to activate control type",
+    )
     async def handle_select_control_type(self, message: SelectControlType):
         logger.info("Control Type Selected: %s", message.control_type)
         self.set_control_type(message.control_type)
@@ -54,6 +58,7 @@ class CEMTestExecutor(AbstractRoleExecutor):
 
     async def process_message(self, message: S2Message):
         if type(message) == SelectControlType:
+            logger.info("SELECT CONTROL TYPE %s", message.control_type)
             await self.handle_select_control_type(message)
         return await super().process_message(message)
 
@@ -61,11 +66,15 @@ class CEMTestExecutor(AbstractRoleExecutor):
         test_name="9.2.1. Update Resource Manager Details",
         error_message_prefix="Error whilst sending RM Details:",
     )
-    async def send_resource_manager_details(self):
+    async def send_resource_manager_details(self, control_type: ProtocolControlType):
         try:
             if self.channel is None:
                 raise ValueError("Channel not set.")
 
+            # logger.info(self.controller.resource_manager_details.available_control_types)
+            self.controller.resource_manager_details.available_control_types = [
+                control_type
+            ]
             await self.controller.send_resource_manager_details(self.channel)
             self.test_logger.success("Resource Manager Details Sent.", ident=0)
         except Exception as e:
@@ -121,16 +130,25 @@ class CEMTestExecutor(AbstractRoleExecutor):
             await self.wait_for_handshake_response()
 
             logger.info("Received Handshake from CEM. Sending RM Details.")
+            if self.controller.resource_manager_details is None:
+                raise ValueError("RM Details not set!")
 
-            await self.send_resource_manager_details()
+            control_types = (
+                self.controller.resource_manager_details.available_control_types
+            )
+            logger.info("Control Types: %s", control_types)
+            for control_type in control_types:
+                logger.info("Sending RM Details with %s control type.", control_type)
+                self._control_type_selected_event.clear()
+                await self.send_resource_manager_details(control_type)
 
-            await self.wait_for_select_control_type()
+                await self.wait_for_select_control_type()
 
-            await self.controller.after_chosen(self.channel)
+                await self.controller.after_chosen(self.channel)
 
-            await self.execute_test_suite()
+                await self.execute_test_suite()
 
-            await asyncio.sleep(5)
+                await asyncio.sleep(5)
 
         except ExitMainLoopException:
             return

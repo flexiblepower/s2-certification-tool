@@ -78,7 +78,6 @@ def load_config(config_path) -> Config:
     with open(config_path) as stream:
         try:
             config = yaml.safe_load(stream)
-            logger.info(config)
         except yaml.YAMLError as exc:
             logger.error("Failed to load yaml config file.")
             raise

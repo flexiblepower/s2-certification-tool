@@ -127,6 +127,7 @@ class AbstractRoleExecutor(abc.ABC):
     @abc.abstractmethod
     async def main_loop(self):
         self._main_loop_started_event.set()
+        self.report.add_test_suite_result(self.generic_tasks_test_suite_result)
 
     async def execute_test_suite(self):
         # Wait until the handshake is complete before starting the testing.

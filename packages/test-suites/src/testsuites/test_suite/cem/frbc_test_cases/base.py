@@ -33,6 +33,10 @@ from s2python.common import (
     RevokeObject,
 )
 
+from testsuites.controllers.cem.not_controllable_controller import (
+    NotControllableCEMController,
+)
+from testsuites.test_suite.cem.not_controllable import NotControllableCEMTestCase
 from testsuites.util import current_timezone_time
 from testsuites.certificate.certificate import (
     ComplianceReport,
@@ -50,7 +54,7 @@ from connectivity.s2_channel import S2Channel
 logger = logging.getLogger(__name__)
 
 
-class FRBCTestCase(NoSelectionTestCase):
+class FRBCTestCase(NotControllableCEMTestCase):
     control_type = ProtocolControlType.FILL_RATE_BASED_CONTROL
 
     TIMEOUT = 5
@@ -196,7 +200,7 @@ class FRBCBaseScenarioTestCase(FRBCTestCase):
 
         await asyncio.sleep(wait_time)
 
-    async def wait_for_instruction(self, wait_time = 10):
+    async def wait_for_instruction(self, wait_time=10):
         try:
             instruction = await self.controller.message_awaiter.wait_for_message(
                 FRBCInstruction, timeout=wait_time

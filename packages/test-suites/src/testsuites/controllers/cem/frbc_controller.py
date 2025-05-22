@@ -17,6 +17,9 @@ from s2python.frbc import (
     FRBCStorageStatus,
 )
 
+from testsuites.controllers.cem.not_controllable_controller import (
+    NotControllableCEMController,
+)
 from testsuites.util import current_timezone_time
 from .base import BaseCEMController
 from connectivity.s2_channel import S2Channel
@@ -44,7 +47,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class FRBCCEMController(BaseCEMController):
+class FRBCCEMController(NotControllableCEMController):
     control_type = ProtocolControlType.FILL_RATE_BASED_CONTROL
     system_description: Optional[FRBCSystemDescription] = None
 

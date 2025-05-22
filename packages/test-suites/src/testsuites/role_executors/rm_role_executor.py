@@ -52,8 +52,6 @@ class RMTestExecutor(AbstractRoleExecutor):
 
             await self.wait_for_rm_details()
 
-            self.report.add_test_suite_result(self.generic_tasks_test_suite_result)
-
             for control_type in self.available_control_types:
 
                 await self.send_select_control_type(control_type)

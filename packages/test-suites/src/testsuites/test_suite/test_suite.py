@@ -60,6 +60,9 @@ class S2TestCase(unittest.TestCase):
 
     tests: List[Tuple[str, Callable, Tuple, Dict, TestResultStatus]]
 
+    controller: Controller
+    config: BaseTestConfig
+
     def __init__(
         self,
         config: BaseTestConfig,
