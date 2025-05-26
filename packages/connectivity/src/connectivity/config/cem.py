@@ -28,6 +28,7 @@ class ControlTypeCEMTestConfig(BaseModel):
         self,
     ) -> Dict[ProtocolControlType, BaseTestConfig | None]:
         return {
+            ProtocolControlType.NO_SELECTION: self.not_controllable,
             ProtocolControlType.NOT_CONTROLABLE: self.not_controllable,
             ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL: self.pebc,
             ProtocolControlType.FILL_RATE_BASED_CONTROL: self.frbc,

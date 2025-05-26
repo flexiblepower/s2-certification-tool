@@ -299,7 +299,7 @@ class TestSuite:
         self, channel: S2Channel, controller: Controller, role: EnergyManagementRole
     ):
         control_type = controller.control_type
-        test_cases = self.test_cases.get(ProtocolControlType.NO_SELECTION, [])
+        test_cases = self.test_cases.get(ProtocolControlType.NOT_CONTROLABLE, [])
         test_cases += self.test_cases.get(control_type, [])
 
         logger.info(

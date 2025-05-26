@@ -1,6 +1,5 @@
 from .pebc_test_cases import (
-    PEBCCurtailmentInstructionTestCase,
-    PEBCPowerConstraintsTestCase,
+    PEBCTestCase,
 )
 from .frbc_test_cases import (
     FRBCActuatorStatusTestCase,

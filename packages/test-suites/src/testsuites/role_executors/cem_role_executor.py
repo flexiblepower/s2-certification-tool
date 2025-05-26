@@ -117,13 +117,12 @@ class CEMTestExecutor(AbstractRoleExecutor):
     async def main_loop(self):
         # This sets the main loop started event so that the message processing can start.
         await super().main_loop()
+        logger.info("Starting Main Loop for CEM Test Executor.")
+        if self.channel is None:
+            raise ValueError("Channel not set.")
 
+        self.test_logger.info("Test suite starting. ", ident=0)
         try:
-            if self.channel is None:
-                raise ValueError("Channel not set.")
-
-            self.test_logger.info("Test suite starting.")
-
             await self.send_handshake()
             await self.wait_for_handshake()
 
@@ -138,8 +137,11 @@ class CEMTestExecutor(AbstractRoleExecutor):
             )
             logger.info("Control Types: %s", control_types)
             for control_type in control_types:
+
                 logger.info("Sending RM Details with %s control type.", control_type)
+                # Reset control type selected event so everything waits.
                 self._control_type_selected_event.clear()
+
                 await self.send_resource_manager_details(control_type)
 
                 await self.wait_for_select_control_type()

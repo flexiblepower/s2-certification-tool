@@ -37,7 +37,7 @@ class AsyncTaskManager:
 
         TODO: Maybe handle the exceptions in a better way...
         """
-        task_name = getattr(task, '__name__', str(task))
+        task_name = getattr(task, "__name__", str(task))
         try:
             await task
             if stop_on_complete:

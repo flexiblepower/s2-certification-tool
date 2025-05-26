@@ -1,3 +1,4 @@
+import asyncio
 from ...certificate.certificate import (
     TestSuiteResults,
     ComplianceReport,
@@ -29,30 +30,40 @@ class NoSelectionTestCase(S2TestCase):
     config: BaseTestConfig
 
 
-class UpdateResourceManagerDetailsTestCase(NoSelectionTestCase):
-    name = "9.2.1. Update Resource Manager Details"
+class NotControllableRMTestCase(S2TestCase):
+    control_type = ProtocolControlType.NOT_CONTROLABLE
 
-    async def test_validate_rm_details_received(self):
+    name = "Not Controllable Control Tasks"
 
-        self.assertIsNotNone(self.controller.resource_manager_details)
+    TIMEOUT = 5
 
-        self.test_logger.success("Resource manager details received.")
+    _resource_manager_details_received_event: asyncio.Event
 
+    def update_resource_manager_details_precondition(
+        self, precondition_id: str | None = None
+    ):
+        """Tests the system description precondition.
 
-class ReceivePowerForecastTestCase(NoSelectionTestCase):
-    name = "Test Receive Power Forecast"
+        Args:
+            precondition_id (string): The ID from the S2 Specification
+        """
 
-    @S2TestCase.test("Test Receive Power Forecast")
-    async def test_receive_power_forecast(self):
+        self.assertIsNotNone(
+            self.controller.resource_manager_details,
+            f"{precondition_id + ' ' if precondition_id is not None else '' }Task Precondition 'Update Resource Manager Details' not complete.",
+        )
+        self.test_logger.success(
+            f"{precondition_id + ' ' if precondition_id is not None else '' }Task Precondition 'Update Resource Manager Details' is complete."
+        )
+
+    @S2TestCase.test(name="9.2.5. Update Power Forecast")
+    async def test_communicate_power_forecast(self):
+        self.update_resource_manager_details_precondition("9.2.5.2.")
+
         message = await self.check_receive_message_type(PowerForecast)
 
-        self.test_logger.success("Test Received Power Forecast")
-
-
-class ReceivePowerMeasurementTestCase(NoSelectionTestCase):
-    name = "Test Receive Power Measurement"
-
-    @S2TestCase.test("Test Receive Power Measurement")
+    @S2TestCase.test(name="9.2.4. Communicate Power Measurement")
     async def test_receive_power_measurement(self):
+        self.update_resource_manager_details_precondition("9.2.4.2.")
+
         message = await self.check_receive_message_type(PowerMeasurement)
-        self.test_logger.success("Test Received Power Measurement")

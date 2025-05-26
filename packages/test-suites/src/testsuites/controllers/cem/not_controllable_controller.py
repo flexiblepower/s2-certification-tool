@@ -48,22 +48,3 @@ class NotControllableCEMController(BaseCEMController):
             self.power_forecasts.append(power_forecast)
         else:
             self.power_forecasts = [power_forecast]
-
-    # async def revoke_power_forecast(
-    #     self,
-    #     channel: Optional[S2Channel],
-    #     power_forecast: Optional[PowerForecast] = None,
-    # ):
-    #     if channel is None:
-    #         raise ValueError("Channel not set.")
-
-    #     if power_forecast is None and len(self.power_forecasts) > 0:
-    #         power_forecast = self.power_forecasts[-1]
-
-    #     if power_forecast is None:
-    #         raise ValueError("No power forecast to use.")
-
-    #     await channel.send_msg_and_await_reception_status(RevokeObject(
-    #         object_id=power_forecast.message_id,
-    #         object_type=RevokableObjects.P
-    #     ))

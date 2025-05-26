@@ -3,15 +3,10 @@ from testsuites.certificate.certificate import ComplianceReport
 from testsuites.test_suite.test_suite import TestSuite, TestSuiteBuilder
 from connectivity.config import Config
 
-from .base_test_case import (
-    ReceivePowerForecastTestCase,
-    ReceivePowerMeasurementTestCase,
-    UpdateResourceManagerDetailsTestCase,
-)
 from .pebc_test_cases import (
-    PEBCCurtailmentInstructionTestCase,
-    PEBCPowerConstraintsTestCase,
+    PEBCTestCase,
 )
+from .base_test_case import NotControllableRMTestCase
 from .frbc_test_cases import (
     FRBCActuatorStatusTestCase,
     FRBCStorageStatusTestCase,
@@ -27,12 +22,9 @@ def build_rm_test_suite(
     return (
         TestSuiteBuilder(config.roles, report, test_logger)
         # RM Not Controllable Test Cases
-        .with_test_case(UpdateResourceManagerDetailsTestCase)
-        .with_test_case(ReceivePowerForecastTestCase)
-        .with_test_case(ReceivePowerMeasurementTestCase)
+        .with_test_case(NotControllableRMTestCase)
         # RM PEBC Test Cases
-        .with_test_case(PEBCPowerConstraintsTestCase)
-        .with_test_case(PEBCCurtailmentInstructionTestCase)
+        .with_test_case(PEBCTestCase)
         # RM FRBC Test Cases
         .with_test_case(FRBCUsageForecastTestCase)
         .with_test_case(FRBCActuatorStatusTestCase)

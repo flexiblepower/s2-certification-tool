@@ -40,6 +40,7 @@ class RMTestExecutor(AbstractRoleExecutor):
     tested_control_types: set[ProtocolControlType] = set()
 
     async def main_loop(self):
+        # This sets the main loop started event so that the message processing can start.
         await super().main_loop()
         logger.info("Starting Main Loop for RM Test Executor.")
         if self.channel is None:

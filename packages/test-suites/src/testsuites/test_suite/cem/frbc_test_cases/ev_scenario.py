@@ -236,6 +236,7 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
             storage_status,
         )
 
+        # Send 2 power measurements with 2 seconds in between 
         for i in range(2):
             power_measurement = PowerMeasurement(
                 message_id=uuid.uuid4(),

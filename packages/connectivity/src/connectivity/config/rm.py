@@ -11,6 +11,7 @@ class NoSelectionRMTestConfig(BaseTestConfig):
 class PEBCRMTestConfig(BaseTestConfig):
     status_update_frequency: int
     status_update_frequency_buffer: int = 5
+    sends_energy_constraints: bool = True
 
 
 class FRBCRMTestConfig(BaseTestConfig):
@@ -21,7 +22,7 @@ class ControlTypeRMTestConfig(BaseModel):
     enabled: bool = True
     role: EnergyManagementRole = EnergyManagementRole.RM
 
-    no_selection: Optional[NoSelectionRMTestConfig]
+    not_controllable: Optional[NoSelectionRMTestConfig]
     pebc: Optional[PEBCRMTestConfig]
     frbc: Optional[FRBCRMTestConfig]
 
@@ -29,7 +30,8 @@ class ControlTypeRMTestConfig(BaseModel):
         self, control_type: ProtocolControlType
     ) -> NoSelectionRMTestConfig | PEBCRMTestConfig | FRBCRMTestConfig:
         return {
-            ProtocolControlType.NO_SELECTION: self.no_selection,
+            ProtocolControlType.NO_SELECTION: self.not_controllable,
+            ProtocolControlType.NOT_CONTROLABLE: self.not_controllable,
             ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL: self.pebc,
             ProtocolControlType.FILL_RATE_BASED_CONTROL: self.frbc,
         }[control_type]

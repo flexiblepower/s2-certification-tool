@@ -38,9 +38,6 @@ class BaseRMController(Controller):
         self.add_handler(Handshake, self.handle_handshake)
         self.add_handler(ResourceManagerDetails, self.handle_rm_details)
 
-        self.add_handler(PowerMeasurement, self.handle_power_measurement_message)
-        self.add_handler(PowerForecast, self.handle_power_forecast_message)
-
     async def handle_handshake(
         self,
         message: Handshake,
@@ -93,21 +90,3 @@ class BaseRMController(Controller):
                 diagnostic_label="Testing complete.",
             )
         )
-
-    async def handle_power_measurement_message(
-        self,
-        message: PowerMeasurement,
-        channel: "S2Channel",
-        send_okay: Awaitable,
-    ):
-
-        await send_okay
-
-    async def handle_power_forecast_message(
-        self,
-        message: PowerForecast,
-        channel: "S2Channel",
-        send_okay: Awaitable,
-    ):
-
-        await send_okay

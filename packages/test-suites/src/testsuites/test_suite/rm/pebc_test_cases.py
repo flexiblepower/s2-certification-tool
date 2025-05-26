@@ -1,7 +1,18 @@
 import logging
 from typing import Dict, List, Tuple
 
-from testsuites.test_suite.test_suite import TestLogger
+from testsuites.certificate.certificate import (
+    ComplianceReport,
+)
+from connectivity.config import PEBCRMTestConfig
+from connectivity.s2_channel import S2Channel
+from testsuites.controllers import PEBCRMController
+
+from testsuites.test_suite.test_suite import (
+    NotApplicableTestException,
+    S2TestCase,
+    TestLogger,
+)
 from testsuites.certificate.certificate import (
     TestResultStatus,
 )
@@ -19,19 +30,97 @@ from s2python.pebc import (
     PEBCPowerEnvelopeElement,
     PEBCPowerEnvelopeLimitType,
 )
-from .base import PEBCTestCase
 
 from itertools import product
 
 logger = logging.getLogger(__name__)
 
 
-class PEBCCurtailmentInstructionTestCase(PEBCTestCase):
-    name = "Test sending curtailment instruction."
+class PEBCTestCase(S2TestCase):
+    name = "9.3. Power Envelope Based Control Tasks"
+    control_type = ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL
+    controller: PEBCRMController
+    config: PEBCRMTestConfig
+
+    def __init__(
+        self,
+        config: PEBCRMTestConfig,
+        channel: S2Channel,
+        controller: PEBCRMController,
+        report: ComplianceReport,
+        logger: TestLogger,
+    ):
+        super().__init__(config, channel, controller, report, logger)
+
+    async def setup(self):
+        await self.controller._power_constraints_received.wait()
 
     async def generate_tests(self):
         await super().generate_tests()
         await self.generate_set_limit_range_instruction_tests()
+
+    async def control_type_set_pebc_precondition(
+        self, precondition_id: str | None = None
+    ):
+        """Tests the system description precondition.
+
+        Args:
+            precondition_id (string): The ID from the S2 Specification
+        """
+        # try:
+        self.assertEqual(
+            self.controller.control_type,
+            ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL,
+            f"{precondition_id + ' ' if precondition_id is not None else '' }Task Precondition 'Activate Control Type' where ControlType is PEBC not complete.",
+        )
+        self.test_logger.success(
+            f"{precondition_id + ' ' if precondition_id is not None else '' }Task Precondition 'Activate Control Type' where ControlType is PEBC is complete.",
+        )
+
+    async def wait_until_power_constraints_set(self):
+        power_constraints = self.controller.power_constraints
+        if (
+            power_constraints is None
+            and not self.controller._power_constraints_received.is_set()
+        ):
+            logger.info(
+                "Waiting. %s, %s",
+                power_constraints,
+                self.controller._power_constraints_received,
+            )
+            await self.controller._power_constraints_received.wait()
+            logger.info("Power Constraints is set.")
+
+    @S2TestCase.test("9.3.1. Update Power Constraints")
+    async def validate_power_constraints_set(self):
+        await self.control_type_set_pebc_precondition("9.3.1.2.")
+        await self.wait_until_power_constraints_set()
+
+    async def power_constraints_set_precondition(
+        self, precondition_id: str | None = None
+    ):
+        """Tests the system description precondition.
+
+        Args:
+            precondition_id (string): The ID from the S2 Specification
+        """
+        # try:
+        self.assertTrue(
+            self.controller._power_constraints_received,
+            f"{precondition_id + ' ' if precondition_id is not None else '' }Task Precondition 'Update Power Constraints' is complete.",
+        )
+        self.test_logger.success(
+            f"{precondition_id + ' ' if precondition_id is not None else '' }Task Precondition 'Activate Control Type' where ControlType is PEBC is complete.",
+        )
+
+    @S2TestCase.test("9.3.3. Update Energy Constraints")
+    async def validate_energy_constraints_set(self):
+        if not self.config.sends_energy_constraints:
+            raise NotApplicableTestException("Energy Constraints disabled in config.")
+
+        await self.control_type_set_pebc_precondition("9.3.3.2.")
+        # TODO Add check for precondition that energy constraints are within power constraints limits
+        await self.wait_until_power_constraints_set()
 
     def create_power_envelope(
         self, commodity_quantity, lower_limit, upper_limit, duration=3600
