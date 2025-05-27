@@ -29,6 +29,7 @@ from s2python.pebc import (
     PEBCPowerEnvelope,
     PEBCPowerEnvelopeElement,
     PEBCPowerEnvelopeLimitType,
+    PEBCEnergyConstraint,
 )
 
 from itertools import product
@@ -57,7 +58,19 @@ class PEBCTestCase(S2TestCase):
 
     async def generate_tests(self):
         await super().generate_tests()
+
+        self.add_test_method(
+            "9.3.1. Update Power Constraints", self.validate_power_constraints_set
+        )
+        self.add_test_method(
+            "9.3.3. Update Energy Constraints", self.validate_energy_constraints_set
+        )
+
         await self.generate_set_limit_range_instruction_tests()
+
+        # self.add_test_method(
+        #     "9.3.4. Revoke Energy Constraints", self.test_revoke_power_constraints
+        # )
 
     async def control_type_set_pebc_precondition(
         self, precondition_id: str | None = None
@@ -91,36 +104,23 @@ class PEBCTestCase(S2TestCase):
             await self.controller._power_constraints_received.wait()
             logger.info("Power Constraints is set.")
 
-    @S2TestCase.test("9.3.1. Update Power Constraints")
     async def validate_power_constraints_set(self):
         await self.control_type_set_pebc_precondition("9.3.1.2.")
         await self.wait_until_power_constraints_set()
 
-    async def power_constraints_set_precondition(
-        self, precondition_id: str | None = None
-    ):
-        """Tests the system description precondition.
-
-        Args:
-            precondition_id (string): The ID from the S2 Specification
-        """
-        # try:
-        self.assertTrue(
-            self.controller._power_constraints_received,
-            f"{precondition_id + ' ' if precondition_id is not None else '' }Task Precondition 'Update Power Constraints' is complete.",
-        )
-        self.test_logger.success(
-            f"{precondition_id + ' ' if precondition_id is not None else '' }Task Precondition 'Activate Control Type' where ControlType is PEBC is complete.",
-        )
-
-    @S2TestCase.test("9.3.3. Update Energy Constraints")
     async def validate_energy_constraints_set(self):
         if not self.config.sends_energy_constraints:
-            raise NotApplicableTestException("Energy Constraints disabled in config.")
+            raise NotApplicableTestException(
+                "This device does not send Energy Constraints messages."
+            )
 
         await self.control_type_set_pebc_precondition("9.3.3.2.")
+
+        message = await self.controller.message_awaiter.wait_for_message(
+            PEBCEnergyConstraint, self.TIMEOUT
+        )
+
         # TODO Add check for precondition that energy constraints are within power constraints limits
-        await self.wait_until_power_constraints_set()
 
     def create_power_envelope(
         self, commodity_quantity, lower_limit, upper_limit, duration=3600
@@ -166,8 +166,6 @@ class PEBCTestCase(S2TestCase):
             self.channel, [power_envelope]
         )
 
-        logger.info("Instruction sent")
-
         status_update = await status_update_coroutine
 
         self.assertEqual(type(status_update), InstructionStatusUpdate)
@@ -177,6 +175,11 @@ class PEBCTestCase(S2TestCase):
         self.assertEqual(status_update.instruction_id, instruction.id)
 
         self.assertEqual(status_update.status_type, expected_instruction_status)
+
+        # TODO: Revoke instruction
+        # await self.controller.send_revoke_power_envelope_instruction(
+        #     self.channel,
+        # )
 
     def generate_curtail_commodity_quantity_tests(
         self,
@@ -200,8 +203,6 @@ class PEBCTestCase(S2TestCase):
             product(lower_limits, upper_limits)
         )
 
-        logger.info("---------- Generating ----------")
-        logger.info(limit_range_pairs)
         for lower_limit, upper_limit in limit_range_pairs:
             limits = [
                 (lower_limit.start_of_range, upper_limit.start_of_range),

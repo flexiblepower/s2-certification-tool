@@ -72,6 +72,20 @@ class RMTestExecutor(AbstractRoleExecutor):
         finally:
             self.test_logger.info("Main loop finished. Signaling stop.", ident=0)
 
+    def set_control_type(self, control_type: ProtocolControlType):
+        handshake_received_event = self.controller._handshake_received_event
+        resource_manager_details_received = (
+            self.controller._resource_manager_details_received
+        )
+
+        super().set_control_type(control_type)
+
+        # Copy the events over.
+        self.controller._handshake_received_event = handshake_received_event
+        self.controller._resource_manager_details_received = (
+            resource_manager_details_received
+        )
+
     @execute_as_test(
         test_name="9.2.1. Update Resource Manager Details",
         error_message_prefix="Error whilst waiting for RM Details:",

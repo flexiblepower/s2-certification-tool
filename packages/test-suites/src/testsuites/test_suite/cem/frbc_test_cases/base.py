@@ -72,23 +72,6 @@ class FRBCTestCase(NotControllableCEMTestCase):
     ):
         super().__init__(config, channel, controller, report, logger)
 
-    # async def setup(self):
-    #     await self.controller._system_description_sent.wait()
-
-    # async def wait_for_system_description_sent(self):
-    #     system_description = self.controller.system_description
-    #     if (
-    #         system_description is None
-    #         and not self.controller._system_description_sent.is_set()
-    #     ):
-    #         logger.debug(
-    #             "Waiting. %s, %s",
-    #             system_description,
-    #             self.controller._system_description_sent,
-    #         )
-    #         await self.controller._system_description_sent.wait()
-    #     logger.debug("System description is set.")
-
 
 class FRBCBaseScenarioTestCase(FRBCTestCase):
 
@@ -108,14 +91,10 @@ class FRBCBaseScenarioTestCase(FRBCTestCase):
     async def setup(self):
         await super().setup()
 
-        if self.controller.control_type != ProtocolControlType.FILL_RATE_BASED_CONTROL:
-            self.test_logger.error(
-                "9.6.1.2. Precondition Activate Control Type (9.2.2) not met"
-            )
-        else:
-            self.test_logger.success(
-                "9.6.1.2. Precondition Activate Control Type (9.2.2) Met"
-            )
+        self.assertEqual(self.controller.control_type, ProtocolControlType.FILL_RATE_BASED_CONTROL, "Precondition Activate Control Type not met")
+        self.test_logger.success(
+            "Precondition Activate Control Type Met"
+        )
 
     def update_system_description_precondition(
         self, precondition_id: str | None = None

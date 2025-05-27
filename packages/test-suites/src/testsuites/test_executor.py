@@ -283,15 +283,21 @@ def create_cem_controllers_dict_with_config(
     )
 
     controllers[ProtocolControlType.NO_SELECTION] = BaseCEMController(rm_details)
-    controllers[ProtocolControlType.NOT_CONTROLABLE] = NotControllableCEMController(
-        rm_details
-    )
-    controllers[ProtocolControlType.FILL_RATE_BASED_CONTROL] = FRBCCEMController(
-        rm_details
-    )
-    controllers[ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL] = PEBCCEMController(
-        rm_details
-    )
+
+    if config.not_controllable and config.not_controllable.enabled:
+        controllers[ProtocolControlType.NOT_CONTROLABLE] = NotControllableCEMController(
+            rm_details
+        )
+
+    if config.frbc and config.frbc.enabled:
+        controllers[ProtocolControlType.FILL_RATE_BASED_CONTROL] = FRBCCEMController(
+            rm_details
+        )
+
+    if config.pebc and config.pebc.enabled:
+        controllers[ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL] = (
+            PEBCCEMController(rm_details)
+        )
 
     control_type_set = set(controllers.keys())
     control_type_set.discard(ProtocolControlType.NO_SELECTION)

@@ -1,4 +1,9 @@
 import asyncio
+
+from connectivity.s2_channel import S2Channel
+
+from testsuites.controllers.controller import Controller
+from testsuites.test_logger import AbstractTestLogger
 from ...certificate.certificate import (
     TestSuiteResults,
     ComplianceReport,
@@ -12,7 +17,7 @@ from s2python.common import (
     PowerMeasurement,
     ControlType as ProtocolControlType,
 )
-from connectivity.config import BaseTestConfig
+from connectivity.config import BaseTestConfig, NoSelectionRMTestConfig
 
 import logging
 
@@ -33,11 +38,17 @@ class NoSelectionTestCase(S2TestCase):
 class NotControllableRMTestCase(S2TestCase):
     control_type = ProtocolControlType.NOT_CONTROLABLE
 
+    controller: BaseRMController
+    config: NoSelectionRMTestConfig
     name = "Not Controllable Control Tasks"
 
     TIMEOUT = 5
 
-    _resource_manager_details_received_event: asyncio.Event
+    async def setup(self):
+        logger.info("WAITING FOR RM DETAILS")
+        await self.controller._resource_manager_details_received.wait()
+        logger.info("%s, %s", self.controller._resource_manager_details_received, self.controller.resource_manager_details)
+        logger.info("RECEIVED RM DETAILS")
 
     def update_resource_manager_details_precondition(
         self, precondition_id: str | None = None
@@ -47,7 +58,6 @@ class NotControllableRMTestCase(S2TestCase):
         Args:
             precondition_id (string): The ID from the S2 Specification
         """
-
         self.assertIsNotNone(
             self.controller.resource_manager_details,
             f"{precondition_id + ' ' if precondition_id is not None else '' }Task Precondition 'Update Resource Manager Details' not complete.",

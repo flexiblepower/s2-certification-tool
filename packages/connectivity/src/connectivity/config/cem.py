@@ -9,11 +9,11 @@ class NoSelectionCEMTestConfig(BaseTestConfig):
 
 
 class PEBCCEMTestConfig(BaseTestConfig):
-    pass
+    instruction_wait_timeout: int = 0
 
 
 class FRBCCEMTestConfig(BaseTestConfig):
-    pass
+    instruction_wait_timeout: int = 0
 
 
 class ControlTypeCEMTestConfig(BaseModel):

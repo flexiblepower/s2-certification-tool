@@ -80,6 +80,7 @@ class BaseRMController(Controller):
 
         if type(message) != ResourceManagerDetails:
             raise ValueError("Expected a Resource Manager details message.")
+
         return message
 
     async def send_session_request_disconnect(self, channel: "S2Channel"):

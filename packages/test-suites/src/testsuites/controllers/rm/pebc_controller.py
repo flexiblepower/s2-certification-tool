@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 class PEBCRMController(BaseRMController):
     control_type = ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL
     power_constraints: Optional[PEBCPowerConstraints] = None
+    energy_constraints: Optional[PEBCEnergyConstraint] = None
 
     _power_constraints_received: asyncio.Event
+    _energy_constraints_received: asyncio.Event
 
     def __init__(self):
         super().__init__()
@@ -51,6 +53,8 @@ class PEBCRMController(BaseRMController):
         connection: "S2Channel",
         send_okay: Awaitable,
     ):
+        self.energy_constraints = message
+        self._energy_constraints_received.set()
         await send_okay
 
     async def handle_instruction_status_update(

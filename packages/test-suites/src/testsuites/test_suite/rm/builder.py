@@ -7,12 +7,7 @@ from .pebc_test_cases import (
     PEBCTestCase,
 )
 from .base_test_case import NotControllableRMTestCase
-from .frbc_test_cases import (
-    FRBCActuatorStatusTestCase,
-    FRBCStorageStatusTestCase,
-    FRBCSystemDescriptionTestCase,
-    FRBCUsageForecastTestCase,
-)
+from .frbc_test_cases import FRBCTestCase
 
 
 def build_rm_test_suite(
@@ -26,8 +21,5 @@ def build_rm_test_suite(
         # RM PEBC Test Cases
         .with_test_case(PEBCTestCase)
         # RM FRBC Test Cases
-        .with_test_case(FRBCUsageForecastTestCase)
-        .with_test_case(FRBCActuatorStatusTestCase)
-        .with_test_case(FRBCSystemDescriptionTestCase)
-        .with_test_case(FRBCStorageStatusTestCase)
+        .with_test_case(FRBCTestCase)
     )

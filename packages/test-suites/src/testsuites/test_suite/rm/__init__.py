@@ -2,9 +2,6 @@ from .pebc_test_cases import (
     PEBCTestCase,
 )
 from .frbc_test_cases import (
-    FRBCActuatorStatusTestCase,
-    FRBCStorageStatusTestCase,
-    FRBCSystemDescriptionTestCase,
-    FRBCUsageForecastTestCase,
+    FRBCTestCase
 )
 from .builder import build_rm_test_suite

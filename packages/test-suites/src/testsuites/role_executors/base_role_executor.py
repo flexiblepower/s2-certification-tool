@@ -88,7 +88,7 @@ class AbstractRoleExecutor(abc.ABC):
     def set_control_type(self, control_type: ProtocolControlType):
         controller = self.controllers[control_type]
         # Put the RM Details into the new controller.
-        controller.resource_manager_details = controller.resource_manager_details
+        controller.resource_manager_details = self.controller.resource_manager_details
         self.controller = controller
 
     async def process_message(self, message: S2Message):

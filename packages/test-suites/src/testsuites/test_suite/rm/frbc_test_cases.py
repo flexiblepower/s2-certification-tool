@@ -16,6 +16,7 @@ from s2python.frbc import (
     FRBCStorageStatus,
     FRBCSystemDescription,
     FRBCUsageForecast,
+    FRBCLeakageBehaviour,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,53 +74,40 @@ class FRBCTestCase(NoSelectionTestCase):
             await self.controller._system_description_received.wait()
         logger.debug("System description is set.")
 
-
-logger = logging.getLogger(__name__)
-
-
-class FRBCSystemDescriptionTestCase(FRBCTestCase):
-    name = "Test receive FRBCSystemDescription"
-
-    @S2TestCase.test
+    @S2TestCase.test("9.6.1 Update System Description")
     async def test_receive_frbc_system_description(self):
-        await self.wait_for_system_description()
-
         message = await self.check_receive_message_type(FRBCSystemDescription)
 
-        self.test_logger.success("Test Receive FRBC System Description")
+        self.assertEqual(type(message), FRBCSystemDescription)
 
+    @S2TestCase.test("9.6.3. Update Leakage Behaviour")
+    async def test_receive_frbc_leakage_behaviour(self):
+        self.update_system_description_precondition("9.6.3.2")
 
-class FRBCActuatorStatusTestCase(FRBCTestCase):
-    name = "Test Receive FRBC Actuator Status"
+        message = await self.check_receive_message_type(FRBCLeakageBehaviour)
 
-    @S2TestCase.test
+        self.assertEqual(type(message), FRBCLeakageBehaviour)
+
+    @S2TestCase.test("Update Actuator Status")
     async def test_receive_actuator_status(self):
-        await self.wait_for_system_description()
+        self.update_system_description_precondition()
 
         message = await self.check_receive_message_type(FRBCActuatorStatus)
 
-        self.test_logger.success("Test Receive FRBC Actuator Status")
+        self.assertEqual(type(message), FRBCActuatorStatus)
 
-
-class FRBCStorageStatusTestCase(FRBCTestCase):
-    name = "Test receive FRBCStorageStatus"
-
-    @S2TestCase.test("Test Receive FRBC Storage Status")
+    @S2TestCase.test("Update Storage Status")
     async def test_receive_storage_status(self):
-        await self.wait_for_system_description()
+        self.update_system_description_precondition()
 
         message = await self.check_receive_message_type(FRBCStorageStatus)
 
-        self.test_logger.success("Test Receive FRBC Storage Status")
+        self.assertEqual(type(message), FRBCStorageStatus)
 
-
-class FRBCUsageForecastTestCase(FRBCTestCase):
-    name = "Test receive FRBCUsageForecast"
-
-    @S2TestCase.test
+    @S2TestCase.test("9.6.5. Update Usage Forecast")
     async def test_receive_usage_forecast(self):
-        await self.wait_for_system_description()
+        self.update_system_description_precondition("9.6.5.2.")
 
         message = await self.check_receive_message_type(FRBCUsageForecast)
 
-        self.test_logger.success("Test Receive FRBC Usage Forecast")
+        self.assertEqual(type(message), FRBCUsageForecast)

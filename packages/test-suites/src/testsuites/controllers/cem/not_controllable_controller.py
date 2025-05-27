@@ -1,4 +1,5 @@
 from typing import Optional
+import uuid
 from s2python.common import (
     ControlType as ProtocolControlType,
     EnergyManagementRole,
@@ -48,3 +49,5 @@ class NotControllableCEMController(BaseCEMController):
             self.power_forecasts.append(power_forecast)
         else:
             self.power_forecasts = [power_forecast]
+
+    # Power Forecast not revokable in S2-Python

@@ -20,9 +20,11 @@ class S2MessageAwaiter:
     """
 
     awaiting: Dict[Type[S2Message], Tuple[asyncio.Event, Optional[S2Message]]]
+    exit_event : Optional[asyncio.Event]
 
-    def __init__(self):
+    def __init__(self, exit_event: Optional[asyncio.Event] = None):
         self.awaiting = {}
+        self.exit_event = exit_event
 
     async def wait_for_message(
         self, message_type: Type[S2Message], timeout: float

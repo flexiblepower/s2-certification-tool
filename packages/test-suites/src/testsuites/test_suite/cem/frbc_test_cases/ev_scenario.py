@@ -236,7 +236,7 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
             storage_status,
         )
 
-        # Send 2 power measurements with 2 seconds in between 
+        # Send 2 power measurements with 2 seconds in between
         for i in range(2):
             power_measurement = PowerMeasurement(
                 message_id=uuid.uuid4(),
@@ -252,7 +252,11 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
                 2,
             )
 
-        self.add_test_method("Wait for instruction", self.wait_for_instruction, 0)
+        self.add_test_method(
+            "Wait for instruction",
+            self.wait_for_instruction,
+            self.config.instruction_wait_timeout,
+        )
 
         # self.add_test_method(
         #     "9.6.4. Revoke Leakage Behaviour", self.test_revoke_system_description, self.leakage_behavior

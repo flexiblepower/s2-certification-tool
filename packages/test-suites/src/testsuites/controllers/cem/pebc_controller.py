@@ -45,6 +45,32 @@ class PEBCCEMController(NotControllableCEMController):
     def __init__(self, resource_manager_details: ResourceManagerDetails):
         super().__init__(resource_manager_details)
 
+    async def send_pebc_power_constraint(
+        self, channel: Optional[S2Channel], power_constraints: PEBCPowerConstraints
+    ):
+        if channel is None:
+            raise ValueError("Channel not set.")
+
+        await channel.send_msg_and_await_reception_status(power_constraints)
+
+        self.power_constraint = power_constraints
+
+    async def revoke_pebc_power_constraint(self, channel: Optional[S2Channel]):
+        if channel is None:
+            raise ValueError("Channel not set.")
+
+        if self.power_constraint is None:
+            raise ValueError("No Power Constraint to Revoke.")
+
+        await channel.send_msg_and_await_reception_status(
+            RevokeObject(
+                message_id=uuid.uuid4(),
+                object_id=self.power_constraint.message_id,
+                object_type=RevokableObjects.PEBC_PowerConstraints,
+            )
+        )
+        self.power_constraint = None
+
     async def send_pebc_energy_constraint(
         self, channel: Optional[S2Channel], energy_constraints: PEBCEnergyConstraint
     ):
@@ -55,12 +81,18 @@ class PEBCCEMController(NotControllableCEMController):
 
         self.energy_constraint = energy_constraints
 
-    async def send_pebc_power_constraint(
-        self, channel: Optional[S2Channel], power_constraints: PEBCPowerConstraints
-    ):
+    async def revoke_pebc_energy_constraint(self, channel: Optional[S2Channel]):
         if channel is None:
             raise ValueError("Channel not set.")
 
-        await channel.send_msg_and_await_reception_status(power_constraints)
+        if self.energy_constraint is None:
+            raise ValueError("No Energy Constraint to Revoke.")
 
-        self.power_constraint = power_constraints
+        await channel.send_msg_and_await_reception_status(
+            RevokeObject(
+                message_id=uuid.uuid4(),
+                object_id=self.energy_constraint.message_id,
+                object_type=RevokableObjects.PEBC_EnergyConstraint,
+            )
+        )
+        self.energy_constraint = None

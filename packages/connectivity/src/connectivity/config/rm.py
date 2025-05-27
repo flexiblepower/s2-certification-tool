@@ -2,6 +2,9 @@ from pydantic import BaseModel
 from .base import BaseTestConfig
 from typing import Optional
 from s2python.common import ControlType as ProtocolControlType, EnergyManagementRole
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class NoSelectionRMTestConfig(BaseTestConfig):
@@ -29,9 +32,10 @@ class ControlTypeRMTestConfig(BaseModel):
     def get_control_type_config(
         self, control_type: ProtocolControlType
     ) -> NoSelectionRMTestConfig | PEBCRMTestConfig | FRBCRMTestConfig:
-        return {
+        config = {
             ProtocolControlType.NO_SELECTION: self.not_controllable,
             ProtocolControlType.NOT_CONTROLABLE: self.not_controllable,
             ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL: self.pebc,
             ProtocolControlType.FILL_RATE_BASED_CONTROL: self.frbc,
         }[control_type]
+        return config

@@ -196,15 +196,12 @@ class S2TestCase(unittest.TestCase):
         message: Optional[str] = None
         try:
             await self.setup()
-            try:
-                await method(*args, **kwargs)
-            finally:
-                await self.teardown()
+            await method(*args, **kwargs)
+            await self.teardown()
 
             self.test_logger.success(f"{name}")
             status = TestResultStatus.PASS
         except NotApplicableTestException as e:
-            logger.info("NA Exception raised.")
             message = str(e)
             status = TestResultStatus.N_A
         except AssertionError as e:
@@ -245,27 +242,35 @@ class S2TestCase(unittest.TestCase):
         test_suite_result = TestSuiteResults(
             name=self.name, control_type=self.controller.control_type
         )
-        start_time = time.time()
 
-        # Generates the parametrized test cases and adds them to the tests list.
-        # This method is overridden in subclasses for generating the test
-        await self.generate_tests()
+        if self.config.enabled:
+            start_time = time.time()
 
-        logger.info("%s: %s", self.name, len(self.tests))
+            # Generates the parametrized test cases and adds them to the tests list.
+            # This method is overridden in subclasses for generating the test
+            await self.generate_tests()
 
-        # Now we run each test case that is in the tests list with the args provided.
-        for name, method, args, kwargs, fail_result_status in self.tests:
-            result = await self.run_test(name, method, args, kwargs, fail_result_status)
+            logger.info("%s: %s", self.name, len(self.tests))
 
-            test_suite_result.add_test_result(result)
+            # Now we run each test case that is in the tests list with the args provided.
+            for name, method, args, kwargs, fail_result_status in self.tests:
+                result = await self.run_test(
+                    name, method, args, kwargs, fail_result_status
+                )
 
-        if len(self.tests) < 1:
+                test_suite_result.add_test_result(result)
+
+            if len(self.tests) < 1:
+                test_suite_result.status = TestResultStatus.N_A
+
+            end_time = time.time()
+            duration = round(end_time - start_time, 2)
+
+            test_suite_result.duration = duration
+        else:
+            self.test_logger.info("Skipping disabled test case.")
             test_suite_result.status = TestResultStatus.N_A
-
-        end_time = time.time()
-        duration = round(end_time - start_time, 2)
-
-        test_suite_result.duration = duration
+            test_suite_result.duration = None
 
         return test_suite_result
 
@@ -299,8 +304,14 @@ class TestSuite:
         self, channel: S2Channel, controller: Controller, role: EnergyManagementRole
     ):
         control_type = controller.control_type
-        test_cases = self.test_cases.get(ProtocolControlType.NOT_CONTROLABLE, [])
-        test_cases += self.test_cases.get(control_type, [])
+        try:
+            # ! THIS AVOIDS A PASS BY REFERENCE. Otherwise the following list concatenation modifies the self.test_cases
+            test_cases = self.test_cases[ProtocolControlType.NOT_CONTROLABLE].copy()
+        except KeyError:
+            test_cases = []
+
+        if control_type != ProtocolControlType.NOT_CONTROLABLE:
+            test_cases += self.test_cases.get(control_type, [])
 
         logger.info(
             "Executing test suite for %s control type. %s test cases to execute.",
@@ -308,20 +319,23 @@ class TestSuite:
             len(test_cases),
         )
         for TestCase in test_cases:
-            control_type = TestCase.control_type
-            config = (self.config.get_control_type_config(role, control_type),)
-            if config is not None:
-                test_case = TestCase(
-                    config,  # type: ignore
-                    channel,
-                    controller,
-                    self.report,
-                    self.test_logger,
-                )
+            config = self.config.get_control_type_config(role, TestCase.control_type)
 
-                result = await test_case.execute()
+            if config is None:
+                raise ValueError("No config passed.")
 
-            self.report.add_test_suite_result(result)
+            test_case = TestCase(
+                config,  # type: ignore
+                channel,
+                controller,
+                self.report,
+                self.test_logger,
+            )
+
+            result = await test_case.execute()
+
+            if result is not None:
+                self.report.add_test_suite_result(result)
 
 
 class TestSuiteBuilder:
