@@ -3,9 +3,9 @@ from testsuites.certificate.certificate import ComplianceReport
 from testsuites.test_suite.test_suite import TestSuite, TestSuiteBuilder
 from connectivity.config import Config
 from .frbc_test_cases import (
-    FRBCElectricVehicleScenarioTestCase,
+    FRBCElectricVehicleScenarioTestCase, FRBCBatteryScenarioTestCase
 )
-from .pebc_test_cases import PEBCPVPanelScenarioTestCase
+from .pebc_test_cases import PEBCPVPanelScenarioTestCase, PEBCElectricVehicleCurtailScenarioTestCase
 from .not_controllable import NotControllableCEMController, NotControllableCEMTestCase
 
 # from .pebc_test_cases import
@@ -18,12 +18,13 @@ def build_cem_test_suite(
     return (
         TestSuiteBuilder(config.roles, report, test_logger)
         # ! Not Controllable Test Cases
-        .with_test_case(
-            NotControllableCEMTestCase
-        )
+        .with_test_case(NotControllableCEMTestCase)
         # ! FRBC Test Cases
-        .with_test_case(FRBCElectricVehicleScenarioTestCase)
-        # .with_test_case(FRBCHeatPumpScenarioTestCase)
+        # .with_test_case(FRBCElectricVehicleScenarioTestCase)
+        .with_test_case(FRBCBatteryScenarioTestCase)
         # ! PEBC Test Case
-        .with_test_case(PEBCPVPanelScenarioTestCase)
+        # .with_test_case(PEBCPVPanelScenarioTestCase)
+        # .with_test_case(
+        #     PEBCElectricVehicleCurtailScenarioTestCase
+        # )
     )

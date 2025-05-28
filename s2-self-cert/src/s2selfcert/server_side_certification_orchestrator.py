@@ -10,7 +10,7 @@ from testsuites.server_websocket_envelope_channel import (
 )
 from testsuites.certification_executor import AbstractCertificationExecutor
 from connectivity.config import Config
-from ws_adapter import WebSocketConnectionAdapter
+from s2selfcert.ws_adapter import WebSocketConnectionAdapter
 
 
 from testsuites.envelope_models import (

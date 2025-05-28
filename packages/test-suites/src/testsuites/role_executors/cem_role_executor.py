@@ -24,7 +24,7 @@ from testsuites.controllers import (
     BaseCEMController,
 )
 from .base_role_executor import (
-    AbstractRoleExecutor,
+    AbstractTestRoleExecutor,
     ExitMainLoopException,
     execute_as_test,
 )
@@ -32,7 +32,7 @@ from .base_role_executor import (
 logger = logging.getLogger(__name__)
 
 
-class CEMTestExecutor(AbstractRoleExecutor):
+class CEMTestExecutor(AbstractTestRoleExecutor):
     role = EnergyManagementRole.CEM
     controller: BaseCEMController
 

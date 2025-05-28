@@ -137,19 +137,7 @@ class FRBCCEMController(NotControllableCEMController):
 
         self.storage_status = storage_status
 
-    async def handle_instruction(
-        self,
-        message: FRBCInstruction,
-        channel: "S2Channel",
-        send_okay: Awaitable,
+    async def send_instruction_status_update(
+        self, channel: "S2Channel", instruction_status_update: InstructionStatusUpdate
     ):
-        logger.info(message)
-
-        await channel.send_msg_and_await_reception_status(
-            InstructionStatusUpdate(
-                instruction_id=message.id,
-                message_id=uuid.uuid4(),
-                status_type=InstructionStatus.SUCCEEDED,
-                timestamp=current_timezone_time(),
-            )
-        )
+        await channel.send_msg_and_await_reception_status(instruction_status_update)

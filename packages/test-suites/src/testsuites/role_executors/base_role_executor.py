@@ -36,7 +36,65 @@ class ExitMainLoopException(Exception):
     pass
 
 
-class AbstractRoleExecutor(abc.ABC):
+class RoleExecutor(abc.ABC):
+    # In the role executor the channel is only used for sending messages. Receiving messages handled by IntegrationTestExecutor.
+    channel: Optional["S2Channel"] = None
+    role: EnergyManagementRole
+
+    controller: Controller
+
+    _handshake_received_event: asyncio.Event
+    _main_loop_started_event: asyncio.Event
+
+    _stop_event: asyncio.Event
+
+    def __init__(self, controller: Controller) -> None:
+        self.controller = controller
+
+        self._handshake_complete = asyncio.Event()
+        self._main_loop_started_event = asyncio.Event()
+
+    async def run(self, channel: S2Channel, stop_event: asyncio.Event, *args, **kwargs):
+        self.channel = channel
+        self._stop_event = stop_event
+
+        await self.main_loop()
+
+    async def process_message(self, message: S2Message):
+        # This is just to make sure that the channel is set before any messages are processed
+        await self._main_loop_started_event.wait()
+        if self.controller is None:
+            raise ValueError("Controller must be set.")
+        await self.controller.handle_message(message, self.channel)
+
+    async def send_handshake(self):
+        try:
+            if self.channel is None:
+                raise ValueError("Channel is not set.")
+            await self.controller.send_handshake(self.channel)
+        except asyncio.CancelledError:
+            logger.warning("Main loop was cancelled.")
+            raise  # Propagate for TaskGroup
+        except Exception as e:
+            raise ExitMainLoopException("Handshake failed.")
+
+    async def wait_for_handshake(self):
+        try:
+            await wait_for_event_or_stop(
+                self.controller._handshake_received_event,
+                self._stop_event,
+                description="Handshake received event.",
+            )
+        except asyncio.CancelledError:
+            logger.warning("Main loop was cancelled.")
+            raise  # Propagate for TaskGroup
+
+    @abc.abstractmethod
+    async def main_loop(self):
+        self._main_loop_started_event.set()
+
+
+class AbstractTestRoleExecutor(abc.ABC):
     # In the role executor the channel is only used for sending messages. Receiving messages handled by IntegrationTestExecutor.
     channel: Optional["S2Channel"] = None
     role: EnergyManagementRole
@@ -159,7 +217,7 @@ def execute_as_test(
     ) -> Callable[P, Coroutine[Any, Any, R | None]]:
         @functools.wraps(func)
         async def wrapper(
-            self_obj: AbstractRoleExecutor, *args: P.args, **kwargs: P.kwargs
+            self_obj: AbstractTestRoleExecutor, *args: P.args, **kwargs: P.kwargs
         ) -> R | None:
             start_time = time.time()
             status = TestResultStatus.FAIL

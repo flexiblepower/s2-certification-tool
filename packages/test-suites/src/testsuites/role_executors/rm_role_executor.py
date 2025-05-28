@@ -24,7 +24,7 @@ from testsuites.controllers import (
     BaseRMController,
 )
 from .base_role_executor import (
-    AbstractRoleExecutor,
+    AbstractTestRoleExecutor,
     ExitMainLoopException,
     execute_as_test,
 )
@@ -32,7 +32,7 @@ from .base_role_executor import (
 logger = logging.getLogger(__name__)
 
 
-class RMTestExecutor(AbstractRoleExecutor):
+class RMTestExecutor(AbstractTestRoleExecutor):
     role = EnergyManagementRole.RM
     controller: BaseRMController
 

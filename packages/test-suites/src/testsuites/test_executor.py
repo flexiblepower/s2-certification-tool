@@ -50,7 +50,7 @@ from connectivity.config import (
     ControlTypeCEMTestConfig,
 )
 from connectivity.connection_adapter import ConnectionClosed, ConnectionError
-from .role_executors import AbstractRoleExecutor, CEMTestExecutor, RMTestExecutor
+from .role_executors import AbstractTestRoleExecutor, CEMTestExecutor, RMTestExecutor
 
 
 logger = logging.getLogger(__name__)
@@ -80,8 +80,8 @@ class IntegrationTestExecutor(AbstractExecutor):
     # The channel which connects to the S2 RM.
     channel: Optional["S2Channel"] = None
 
-    executor: AbstractRoleExecutor | None = None
-    role_executors: Dict[EnergyManagementRole, AbstractRoleExecutor]
+    executor: AbstractTestRoleExecutor | None = None
+    role_executors: Dict[EnergyManagementRole, AbstractTestRoleExecutor]
 
     _stop_event: asyncio.Event
 
@@ -89,7 +89,7 @@ class IntegrationTestExecutor(AbstractExecutor):
 
     def __init__(
         self,
-        role_executors: Dict[EnergyManagementRole, AbstractRoleExecutor],
+        role_executors: Dict[EnergyManagementRole, AbstractTestRoleExecutor],
     ) -> None:
 
         self.role_executors = role_executors
@@ -329,7 +329,7 @@ def create_test_executor(
         test_logger=test_logger,
     )
 
-    role_executors: Dict[EnergyManagementRole, AbstractRoleExecutor] = {
+    role_executors: Dict[EnergyManagementRole, AbstractTestRoleExecutor] = {
         EnergyManagementRole.RM: rm_role_executor,
         EnergyManagementRole.CEM: cem_role_executor,
     }

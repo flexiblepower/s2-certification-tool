@@ -1,5 +1,7 @@
 import asyncio
+from dataclasses import dataclass
 import logging
+import uuid
 from connectivity.s2_channel import S2Channel
 
 from connectivity.config import PEBCCEMTestConfig
@@ -8,6 +10,7 @@ from testsuites.controllers.cem.pebc_controller import PEBCCEMController
 from testsuites.test_logger import TestLogger
 from testsuites.test_suite.rm.base_test_case import NoSelectionTestCase
 from testsuites.test_suite.test_suite import NotApplicableTestException, S2TestCase
+from testsuites.util import current_timezone_time
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +18,8 @@ from s2python.common import (
     ControlType as ProtocolControlType,
     EnergyManagementRole,
     PowerForecast,
+    PowerForecastElement,
+    PowerForecastValue,
     PowerMeasurement,
     PowerValue,
     ResourceManagerDetails,
@@ -37,6 +42,14 @@ from s2python.pebc import (
     PEBCPowerEnvelopeElement,
     PEBCPowerEnvelopeLimitType,
 )
+
+
+@dataclass
+class PowerForecastData:
+    commodity_quantity: CommodityQuantity
+    value: int
+    duration: int = 3600
+    variance: float = 0.5
 
 
 class PEBCBaseScenarioTestCase(S2TestCase):
@@ -142,9 +155,42 @@ class PEBCBaseScenarioTestCase(S2TestCase):
 
     async def wait_for_instruction(self, wait_time=10):
         try:
+            self.test_logger.info(f"Waiting {wait_time} seconds for an instruction...")
             instruction = await self.controller.message_awaiter.wait_for_message(
                 PEBCInstruction, timeout=wait_time
             )
             self.test_logger.info(instruction)
         except TimeoutError as e:
             raise NotApplicableTestException("No instruction received.")
+
+    def create_power_forecast(
+        self, values: list[list[PowerForecastData]]
+    ) -> PowerForecast:
+        elements = []
+        for period_value in values:
+            for period_data in period_value:
+                elements.append(
+                    PowerForecastElement(
+                        duration=Duration(period_data.duration),
+                        power_values=[
+                            PowerForecastValue(
+                                commodity_quantity=period_data.commodity_quantity,
+                                value_expected=period_data.value,
+                                value_lower_limit=period_data.value
+                                - period_data.variance * period_data.value,
+                                value_upper_limit=period_data.value
+                                + period_data.variance * period_data.value,
+                                value_lower_68PPR=None,
+                                value_upper_68PPR=None,
+                                value_lower_95PPR=None,
+                                value_upper_95PPR=None,
+                            )
+                        ],
+                    )
+                )
+
+        return PowerForecast(
+            message_id=uuid.uuid4(),
+            elements=elements,
+            start_time=current_timezone_time(),
+        )

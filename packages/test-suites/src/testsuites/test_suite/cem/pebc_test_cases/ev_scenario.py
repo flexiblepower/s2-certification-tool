@@ -38,8 +38,8 @@ from s2python.pebc import (
 from testsuites.util import current_timezone_time
 
 
-class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
-    name = "Photovoltaic Panel Scenario Test Case"
+class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
+    name = "Electric Vehicle Curtail Charging Scenario Test Case"
 
     def __init__(
         self,
@@ -52,7 +52,6 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
         super().__init__(config, channel, controller, report, logger)
 
         self.create_power_constraint()
-        self.create_energy_constraint()
 
     def create_power_constraint(self):
 
@@ -60,27 +59,39 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
             abnormal_condition_only=False,
             commodity_quantity=CommodityQuantity.ELECTRIC_POWER_L1,
             limit_type=PEBCPowerEnvelopeLimitType.UPPER_LIMIT,
-            range_boundary=NumberRange(start_of_range=0, end_of_range=0),
+            range_boundary=NumberRange(start_of_range=0, end_of_range=2000),
         )
         self.lower_limit = PEBCAllowedLimitRange(
             abnormal_condition_only=False,
             commodity_quantity=CommodityQuantity.ELECTRIC_POWER_L1,
             limit_type=PEBCPowerEnvelopeLimitType.LOWER_LIMIT,
-            range_boundary=NumberRange(start_of_range=0, end_of_range=-2000),
+            range_boundary=NumberRange(start_of_range=0, end_of_range=0),
         )
 
         self.power_constraint = PEBCPowerConstraints(
             message_id=uuid.uuid4(),
             id=uuid.uuid4(),
             allowed_limit_ranges=[self.lower_limit, self.upper_limit],
-            consequence_type=PEBCPowerEnvelopeConsequenceType.VANISH,
+            consequence_type=PEBCPowerEnvelopeConsequenceType.DEFER,
             valid_from=current_timezone_time(),
             valid_until=current_timezone_time() + timedelta(hours=1),
         )
 
-    def create_energy_constraint(self):
-        # PV doesn't have energy constraint
-        pass
+    def create_energy_constraint(
+        self,
+        upper_average_power,
+        lower_average_power,
+        commodity_quantity=CommodityQuantity.ELECTRIC_POWER_L1,
+    ):
+        return PEBCEnergyConstraint(
+            id=uuid.uuid4(),
+            message_id=uuid.uuid4(),
+            commodity_quantity=commodity_quantity,
+            upper_average_power=upper_average_power,
+            lower_average_power=lower_average_power,
+            valid_from=current_timezone_time(),
+            valid_until=current_timezone_time() + timedelta(hours=1),
+        )
 
     def create_power_measurement(
         self, power_values: list[tuple[CommodityQuantity, float]]
@@ -102,14 +113,7 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
 
     async def generate_tests(self):
         await super().generate_tests()
-
-        dupe_power_constraint = self.power_constraint.model_copy()
-        dupe_power_constraint.message_id = uuid.uuid4()
-        self.add_test_method(
-            "9.3.1. Update Power Constraints (Initial)",
-            self.test_send_pebc_power_constraint,
-            dupe_power_constraint,
-        )
+        self.test_logger.info("Starting in a not charging state.")
 
         self.add_test_method(
             "9.3.1. Update Power Constraints",
@@ -117,33 +121,75 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
             self.power_constraint,
         )
 
-        # ! No energy constraints since PV doesn't have them.
+        off_energy_constraint = self.create_energy_constraint(0, 0)
+        self.add_test_method(
+            "Update Energy Constraint",
+            self.test_send_energy_constraint,
+            off_energy_constraint,
+        )
 
         self.add_test_method(
             "9.2.5. Update Power Forecast",
             self.test_update_power_forecast,
             self.create_power_forecast(
                 [
-                    [PowerForecastData(CommodityQuantity.ELECTRIC_POWER_L1, 0)],
+                    [
+                        PowerForecastData(
+                            CommodityQuantity.ELECTRIC_POWER_L1, 0, variance=0
+                        )
+                    ],
+                    [
+                        PowerForecastData(
+                            CommodityQuantity.ELECTRIC_POWER_L1, 0, variance=0
+                        )
+                    ],
                 ]
             ),
         )
+
+        # Send Measurement when not charging
         self.add_test_method(
             "9.2.4. Communicate Power Measurement",
             self.test_update_power_measurement,
-            self.create_power_measurement(
-                [(CommodityQuantity.ELECTRIC_POWER_L1, -2000)]
-            ),
+            self.create_power_measurement([(CommodityQuantity.ELECTRIC_POWER_L1, 0)]),
             10,
+        )
+        self.test_logger.info("Changing to a charging state.")
+
+        # Car plugged in. Starting to charge.
+        charging_energy_constraint = self.create_energy_constraint(2000, 1000)
+        self.add_test_method(
+            "Update Energy Constraint",
+            self.test_send_energy_constraint,
+            charging_energy_constraint,
+        )
+
+        self.add_test_method(
+            "9.2.5. Update Power Forecast",
+            self.test_update_power_forecast,
+            self.create_power_forecast(
+                [
+                    [
+                        PowerForecastData(
+                            CommodityQuantity.ELECTRIC_POWER_L1, 2000, variance=0
+                        )
+                    ],
+                    [
+                        PowerForecastData(
+                            CommodityQuantity.ELECTRIC_POWER_L1, 2000, variance=0
+                        )
+                    ],
+                ]
+            ),
         )
 
         self.add_test_method(
             "9.2.4. Communicate Power Measurement",
             self.test_update_power_measurement,
             self.create_power_measurement(
-                [(CommodityQuantity.ELECTRIC_POWER_L1, -1800)]
+                [(CommodityQuantity.ELECTRIC_POWER_L1, 2000)]
             ),
-            60,
+            # 60,
         )
 
         self.add_test_method(

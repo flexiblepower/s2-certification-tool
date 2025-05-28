@@ -258,9 +258,6 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
             self.config.instruction_wait_timeout,
         )
 
-        # self.add_test_method(
-        #     "9.6.4. Revoke Leakage Behaviour", self.test_revoke_system_description, self.leakage_behavior
-        # )
         # Goes at the end since a number of other tests require system description as a precondition.
         self.add_test_method(
             "9.6.2. Revoke System Description",

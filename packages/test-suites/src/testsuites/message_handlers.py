@@ -1,5 +1,5 @@
 import asyncio
-from typing import Callable, Dict, Optional, Tuple, Type
+from typing import Awaitable, Callable, Dict, Optional, Tuple, Type
 
 from s2python.common import EnergyManagementRole
 from s2python.message import S2Message
@@ -20,7 +20,7 @@ class S2MessageAwaiter:
     """
 
     awaiting: Dict[Type[S2Message], Tuple[asyncio.Event, Optional[S2Message]]]
-    exit_event : Optional[asyncio.Event]
+    exit_event: Optional[asyncio.Event]
 
     def __init__(self, exit_event: Optional[asyncio.Event] = None):
         self.awaiting = {}
@@ -84,7 +84,7 @@ async def send_okay_message(channel: S2Channel, message: S2Message):
 
 
 class MessageHandler:
-    handlers: Dict[Type[S2Message], Callable]
+    handlers: Dict[Type[S2Message], Callable[..., Awaitable[None]]]
 
     message_awaiter = S2MessageAwaiter()
 
@@ -112,7 +112,9 @@ class MessageHandler:
             return False
         return True
 
-    def add_handler(self, msg_type: Type[S2Message], handler: Callable):
+    def add_handler(
+        self, msg_type: Type[S2Message], handler: Callable[..., Awaitable[None]]
+    ):
         self.handlers[msg_type] = handler
 
     async def handle_message(self, message: S2Message, channel: "S2Channel"):
