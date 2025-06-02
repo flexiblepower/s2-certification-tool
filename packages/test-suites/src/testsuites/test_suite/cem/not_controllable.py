@@ -24,7 +24,6 @@ from testsuites.controllers.cem.not_controllable_controller import (
 )
 from testsuites.util import current_timezone_time
 from testsuites.test_logger import TestLogger
-from testsuites.test_suite.rm.base_test_case import NoSelectionTestCase
 from connectivity.s2_channel import S2Channel
 
 from connectivity.config import BaseTestConfig

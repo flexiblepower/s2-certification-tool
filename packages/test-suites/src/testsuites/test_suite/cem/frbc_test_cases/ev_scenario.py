@@ -71,7 +71,7 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
 
     def create_ev_example_frbc_system_description(self):
         self.commodity = Commodity.ELECTRICITY
-        self.commodity_quantity = CommodityQuantity.ELECTRIC_POWER_3_PHASE_SYMMETRIC
+        self.commodity_quantity = CommodityQuantity.ELECTRIC_POWER_L1
 
         self.storage_description = FRBCStorageDescription(
             diagnostic_label="Battery SoC",
@@ -100,8 +100,9 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
                 )
             ],
             diagnostic_label="Off",
-            abnormal_condition_only=True,
+            abnormal_condition_only=False,
         )
+
         self.charging_operation_mode = FRBCOperationMode(
             id=uuid.uuid4(),
             elements=[
@@ -120,7 +121,7 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
                 )
             ],
             diagnostic_label="Charging",
-            abnormal_condition_only=True,
+            abnormal_condition_only=False,
         )
 
         self.actuator = FRBCActuatorDescription(
@@ -136,7 +137,7 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
                         "start_timers": [],
                         "blocking_timers": [],
                         "transition_duration": Duration(3000),
-                        "abnormal_condition_only": True,
+                        "abnormal_condition_only": False,
                     }
                 ),
                 Transition(
@@ -147,7 +148,7 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
                         "start_timers": [],
                         "blocking_timers": [],
                         "transition_duration": Duration(3000),
-                        "abnormal_condition_only": True,
+                        "abnormal_condition_only": False,
                     }
                 ),
             ],
