@@ -66,17 +66,11 @@ class Controller(MessageHandler):
 
         return result
 
-    async def send_handshake(self, channel: S2Channel):
+    async def send_handshake(self, channel: S2Channel, message: Handshake):
         if channel is None:
             raise ValueError("Channel not set.")
 
-        await channel.send_msg_and_await_reception_status(
-            Handshake(
-                message_id=uuid.uuid4(),  # type: ignore
-                role=self.role,
-                supported_protocol_versions=[S2_VERSION],
-            )
-        )
+        await channel.send_msg_and_await_reception_status(message)
 
     async def handle_handshake(
         self,

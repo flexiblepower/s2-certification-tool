@@ -53,17 +53,17 @@ class CEMTestRoleExecutor(TestRoleExecutor):
         self._control_type_selected_event = asyncio.Event()
         self._handshake_response_received_event = asyncio.Event()
 
-    @execute_as_test(
-        test_name="9.2.2. Activate Control Type",
-        error_message_prefix="Failed to activate control type",
-    )
     async def handle_select_control_type(self, message: SelectControlType):
         logger.info("Control Type Selected: %s", message.control_type)
         self.set_control_type(message.control_type)
         self._control_type_selected_event.set()
 
+    async def handle_handshake_response(self, message: HandshakeResponse):
+        self._handshake_response_received_event.set()
+        self.handshake_response_message = message
+
     async def process_message(self, message: S2Message):
-        # Grab the select control type messages here so we can process them inside this class without complicated callbacks.
+        # Grab messages here so we can process them inside this class without complicated callbacks.
         if type(message) == SelectControlType:
             await self.handle_select_control_type(message)
         elif type(message) == HandshakeResponse:
@@ -94,6 +94,10 @@ class CEMTestRoleExecutor(TestRoleExecutor):
             )
             raise ExitMainLoopException()
 
+    @execute_as_test(
+        test_name="9.2.2. Activate Control Type",
+        error_message_prefix="Failed to activate control type",
+    )
     async def wait_for_select_control_type(self):
         try:
             await wait_for_event_or_stop(
@@ -125,17 +129,14 @@ class CEMTestRoleExecutor(TestRoleExecutor):
             description="No handshake response received.",
         )
 
-    async def handle_handshake_response(self, message: HandshakeResponse):
-        self._handshake_response_received_event.set()
-
-        if self.handshake_message is None:
+        if self.incoming_handshake_message is None:
             raise ValueError("Handshake message was not saved for validation.")
 
         # Checking that the protocol version selected by the CEM is included in the list of supported versions send in the handshake.
         if (
-            self.handshake_message.supported_protocol_versions is not None
-            and message.selected_protocol_version
-            not in self.handshake_message.supported_protocol_versions
+            self.incoming_handshake_message.supported_protocol_versions is not None
+            and self.handshake_response_message.selected_protocol_version
+            not in self.incoming_handshake_message.supported_protocol_versions
         ):
             raise AssertionError(
                 "Invalid protocol version selected by CEM. Version selected not included in supported protocol versions."

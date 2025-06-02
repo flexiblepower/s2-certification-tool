@@ -69,6 +69,10 @@ class AbstractExecutor(abc.ABC):
     async def run(self, *args, **kwargs):
         pass
 
+    async def stop(self):
+        logger.debug("Stop Called in class %s", self.__class__.__name__)
+        self._stop_event.set()
+
 
 class IntegrationTestExecutor(AbstractExecutor):
     """
@@ -89,9 +93,6 @@ class IntegrationTestExecutor(AbstractExecutor):
 
     _select_role_executor = asyncio.Event()
 
-    # Save the handshake when it's sent so that it can be passed to the role executor for use in validation.
-    handshake_message: Handshake
-
     def __init__(
         self,
         role_executors: Dict[EnergyManagementRole, TestRoleExecutor],
@@ -109,7 +110,7 @@ class IntegrationTestExecutor(AbstractExecutor):
         role = message.role
 
         self.executor = self.role_executors[role]
-        self.executor.handshake_message = self.handshake_message
+        self.executor.incoming_handshake_message = message
 
         # Setting this will allow the main_loop to proceed
         self._select_role_executor.set()
@@ -157,8 +158,7 @@ class IntegrationTestExecutor(AbstractExecutor):
         return self.running
 
     async def stop(self):
-        logger.debug("Stop Called in class %s", self.__class__.__name__)
-        self._stop_event.set()
+        await super().stop()
 
         if self.channel is not None:
             await self.channel.stop()
