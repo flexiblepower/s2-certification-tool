@@ -50,6 +50,13 @@ class SendOkay:
 
 
 class S2Channel(Channel[S2Message, str]):
+    """
+    Manages the connection and message processing from an S2 Device.
+    Received messages off the ConnectionAdapter in a loop and puts them onto a queue to be processed elsewhere.
+    Manages the conversion from/to JSON string to/from S2 Message. Uses S2 Parser for conversion
+
+    This class is heavily based on the S2Connection class from the S2Python Library.
+    """
 
     s2_parser: S2Parser
 
@@ -64,7 +71,6 @@ class S2Channel(Channel[S2Message, str]):
         self.message_queue = asyncio.Queue()
 
     async def send(self, message: S2Message):
-        # str_msg = message.model_dump_json()
         str_msg = message.to_json()
 
         return await self.connection.send(str_msg)

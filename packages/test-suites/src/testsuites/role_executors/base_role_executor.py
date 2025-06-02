@@ -8,6 +8,7 @@ from typing import Any, Callable, Coroutine, Dict, Optional, ParamSpec, TypeVar
 from s2python.common import (
     ControlType as ProtocolControlType,
     EnergyManagementRole,
+    Handshake,
 )
 from s2python.message import S2Message
 
@@ -94,7 +95,7 @@ class RoleExecutor(abc.ABC):
         self._main_loop_started_event.set()
 
 
-class AbstractTestRoleExecutor(abc.ABC):
+class TestRoleExecutor(abc.ABC):
     # In the role executor the channel is only used for sending messages. Receiving messages handled by IntegrationTestExecutor.
     channel: Optional["S2Channel"] = None
     role: EnergyManagementRole
@@ -106,8 +107,12 @@ class AbstractTestRoleExecutor(abc.ABC):
 
     report: ComplianceReport
     test_logger: AbstractTestLogger
+
+    # This is the test results which keeps track of the handshake process etc...
+    # Tests for this are done using the `execute_as_test` method decorator
     generic_tasks_test_suite_result = TestSuiteResults(name="9.2. Generic Tasks")
 
+    handshake_message: Optional[Handshake] = None
     _handshake_received_event: asyncio.Event
     _main_loop_started_event: asyncio.Event
 
@@ -217,7 +222,7 @@ def execute_as_test(
     ) -> Callable[P, Coroutine[Any, Any, R | None]]:
         @functools.wraps(func)
         async def wrapper(
-            self_obj: AbstractTestRoleExecutor, *args: P.args, **kwargs: P.kwargs
+            self_obj: TestRoleExecutor, *args: P.args, **kwargs: P.kwargs
         ) -> R | None:
             start_time = time.time()
             status = TestResultStatus.FAIL

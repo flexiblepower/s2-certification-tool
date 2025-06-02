@@ -10,30 +10,23 @@ import uuid
 from s2python.common import (
     ControlType as ProtocolControlType,
     EnergyManagementRole,
-    ResourceManagerDetails,
 )
 from s2python.message import S2Message
 
 
-from testsuites.certificate.certificate import (
-    TestResult,
-    TestResultStatus,
-    TestSuiteResults,
-)
 from testsuites.controllers import (
     BaseRMController,
 )
 from .base_role_executor import (
-    AbstractTestRoleExecutor,
-    ExitMainLoopException,
+    TestRoleExecutor,
     execute_as_test,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class RMTestExecutor(AbstractTestRoleExecutor):
-    role = EnergyManagementRole.RM
+class RMTestExecutor(TestRoleExecutor):
+    role = EnergyManagementRole.CEM
     controller: BaseRMController
 
     available_control_types: set[ProtocolControlType] = set()

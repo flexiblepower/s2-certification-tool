@@ -50,7 +50,7 @@ from connectivity.config import (
     ControlTypeCEMTestConfig,
 )
 from connectivity.connection_adapter import ConnectionClosed, ConnectionError
-from .role_executors import AbstractTestRoleExecutor, CEMTestExecutor, RMTestExecutor
+from .role_executors import TestRoleExecutor, CEMTestRoleExecutor, RMTestExecutor
 
 
 logger = logging.getLogger(__name__)
@@ -78,18 +78,23 @@ class IntegrationTestExecutor(AbstractExecutor):
     """
 
     # The channel which connects to the S2 RM.
+    # Has it's own task which needs to be run which received messages from the S2 device and puts them into a queue so they can be processed here.
+    # Sending a message to the device is done by calling `send_msg_and_await_reception_status`
     channel: Optional["S2Channel"] = None
 
-    executor: AbstractTestRoleExecutor | None = None
-    role_executors: Dict[EnergyManagementRole, AbstractTestRoleExecutor]
+    executor: TestRoleExecutor | None = None
+    role_executors: Dict[EnergyManagementRole, TestRoleExecutor]
 
     _stop_event: asyncio.Event
 
     _select_role_executor = asyncio.Event()
 
+    # Save the handshake when it's sent so that it can be passed to the role executor for use in validation.
+    handshake_message: Handshake
+
     def __init__(
         self,
-        role_executors: Dict[EnergyManagementRole, AbstractTestRoleExecutor],
+        role_executors: Dict[EnergyManagementRole, TestRoleExecutor],
     ) -> None:
 
         self.role_executors = role_executors
@@ -104,6 +109,7 @@ class IntegrationTestExecutor(AbstractExecutor):
         role = message.role
 
         self.executor = self.role_executors[role]
+        self.executor.handshake_message = self.handshake_message
 
         # Setting this will allow the main_loop to proceed
         self._select_role_executor.set()
@@ -131,7 +137,7 @@ class IntegrationTestExecutor(AbstractExecutor):
         try:
             while not self._stop_event.is_set():
                 try:
-                    # Use a timeout to periodically check for cancellation
+                    # Use a timeout to periodically check for cancellation. Otherwise this will block the program exiting.
                     message = await asyncio.wait_for(
                         self.channel.get_next_message(), timeout=1.0
                     )
@@ -167,6 +173,7 @@ class IntegrationTestExecutor(AbstractExecutor):
         pass
 
     async def run_channel(self):
+        """Wrapper method for the channel.run task for catching errors in it."""
         if self.channel is None:
             raise ValueError("S2 Channel is not provided")
         try:
@@ -177,19 +184,20 @@ class IntegrationTestExecutor(AbstractExecutor):
             await self.stop()
 
     async def main_loop(self):
-        # Wait until the initial handshake message has been received to set role executor.
+        # Wait until the initial handshake message has been received and role executor set before running the role executor's main loop
         await wait_for_event_or_stop(self._select_role_executor, self._stop_event)
 
-        if self.executor is not None and self.channel is not None:
-            logger.info("Choosing executor as role %s", self.executor.role)
-            # await wait_for_event_or_stop(self._select_role_executor, self._stop_event)
-            await self.executor.run(self.channel, self._stop_event)
-        else:
+        if self.executor is None or self.channel is None:
             raise ValueError("Unable to run role executor main loop.")
+
+        logger.info("Choosing executor as role %s", self.executor.role)
+        # await wait_for_event_or_stop(self._select_role_executor, self._stop_event)
+        await self.executor.run(self.channel, self._stop_event)
 
         await self.stop()
 
     async def run(self, *args, **kwargs):
+        """Main control method of the executor. It creates all of the tasks and manages them."""
         self.running = True
         await self.setup(*args, **kwargs)
 
@@ -220,9 +228,6 @@ class IntegrationTestExecutor(AbstractExecutor):
                     exc_info=exc,
                 )
             await self.stop()  # Signal cooperative shutdown for other parts if any
-        # except asyncio.CancelledError:
-        #     logger.warning("IntegrationTestExecutor run method was cancelled externally.")
-        #     self.stop()
         finally:
             logger.info("IntegrationTestExecutor run method finishing.")
             await self.cleanup()  # Perform final cleanup (e.g., channel.stop())
@@ -322,14 +327,14 @@ def create_test_executor(
 
     cem_controllers = create_cem_controllers_dict_with_config(config.roles.cem)
     cem_test_suite_builder = build_cem_test_suite(config, report, test_logger)
-    cem_role_executor = CEMTestExecutor(
+    cem_role_executor = CEMTestRoleExecutor(
         controllers=cem_controllers,
         test_suite=cem_test_suite_builder.build(),
         report=report,
         test_logger=test_logger,
     )
 
-    role_executors: Dict[EnergyManagementRole, AbstractTestRoleExecutor] = {
+    role_executors: Dict[EnergyManagementRole, TestRoleExecutor] = {
         EnergyManagementRole.RM: rm_role_executor,
         EnergyManagementRole.CEM: cem_role_executor,
     }

@@ -24,7 +24,7 @@ from testsuites.controllers import (
     BaseCEMController,
 )
 from .base_role_executor import (
-    AbstractTestRoleExecutor,
+    TestRoleExecutor,
     ExitMainLoopException,
     execute_as_test,
 )
@@ -32,8 +32,13 @@ from .base_role_executor import (
 logger = logging.getLogger(__name__)
 
 
-class CEMTestExecutor(AbstractTestRoleExecutor):
-    role = EnergyManagementRole.CEM
+class CEMTestRoleExecutor(TestRoleExecutor):
+    """Tests a CEM. This assumed the role of Resource Manager and behaves like one for the duration of the tests.
+    For all activated control types this role executor will send an RM Details message with only one available control type which forces the CEM to choose it.
+    Then all of the tests for that control type are executed, after which a new RM details is sent with the next control type to be tested.
+    """
+
+    role = EnergyManagementRole.RM
     controller: BaseCEMController
 
     def __init__(
@@ -46,6 +51,7 @@ class CEMTestExecutor(AbstractTestRoleExecutor):
         super().__init__(controllers, test_suite, report, test_logger)
 
         self._control_type_selected_event = asyncio.Event()
+        self._handshake_response_received_event = asyncio.Event()
 
     @execute_as_test(
         test_name="9.2.2. Activate Control Type",
@@ -57,9 +63,11 @@ class CEMTestExecutor(AbstractTestRoleExecutor):
         self._control_type_selected_event.set()
 
     async def process_message(self, message: S2Message):
+        # Grab the select control type messages here so we can process them inside this class without complicated callbacks.
         if type(message) == SelectControlType:
-            logger.info("SELECT CONTROL TYPE %s", message.control_type)
             await self.handle_select_control_type(message)
+        elif type(message) == HandshakeResponse:
+            await self.handle_handshake_response(message)
         return await super().process_message(message)
 
     @execute_as_test(
@@ -70,6 +78,9 @@ class CEMTestExecutor(AbstractTestRoleExecutor):
         try:
             if self.channel is None:
                 raise ValueError("Channel not set.")
+
+            if self.controller.resource_manager_details is None:
+                raise ValueError("RM Details not set.")
 
             # logger.info(self.controller.resource_manager_details.available_control_types)
             self.controller.resource_manager_details.available_control_types = [
@@ -89,7 +100,7 @@ class CEMTestExecutor(AbstractTestRoleExecutor):
                 self._control_type_selected_event,
                 self._stop_event,
                 5,
-                "Control Type Selected Event",
+                description="Control Type Selected Event",
             )
             self.test_logger.success(
                 f"Control type set to {self.controller.control_type.name}", ident=0
@@ -103,21 +114,38 @@ class CEMTestExecutor(AbstractTestRoleExecutor):
             )
             raise ExitMainLoopException()
 
+    @execute_as_test(
+        test_name="Handshake Response",
+        error_message_prefix="Error whilst processing handshake response from CEM.",
+    )
     async def wait_for_handshake_response(self):
-        try:
-            await self.controller.message_awaiter.wait_for_message(HandshakeResponse, 5)
-            self.test_logger.success("Handshake Response Received.", ident=0)
-        except asyncio.CancelledError:
-            logger.warning("Main loop was cancelled.")
-            raise  # Propagate for TaskGroup
-        except Exception as e:
-            self.test_logger.error(f"No handshake response received: {e}", ident=0)
-            return
+        await wait_for_event_or_stop(
+            self._handshake_response_received_event,
+            self._stop_event,
+            description="No handshake response received.",
+        )
+
+    async def handle_handshake_response(self, message: HandshakeResponse):
+        self._handshake_response_received_event.set()
+
+        if self.handshake_message is None:
+            raise ValueError("Handshake message was not saved for validation.")
+
+        # Checking that the protocol version selected by the CEM is included in the list of supported versions send in the handshake.
+        if (
+            self.handshake_message.supported_protocol_versions is not None
+            and message.selected_protocol_version
+            not in self.handshake_message.supported_protocol_versions
+        ):
+            raise AssertionError(
+                "Invalid protocol version selected by CEM. Version selected not included in supported protocol versions."
+            )
 
     async def main_loop(self):
         # This sets the main loop started event so that the message processing can start.
         await super().main_loop()
         logger.info("Starting Main Loop for CEM Test Executor.")
+
         if self.channel is None:
             raise ValueError("Channel not set.")
 
