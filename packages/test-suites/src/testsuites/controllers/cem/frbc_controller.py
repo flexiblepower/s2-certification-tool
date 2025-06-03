@@ -60,6 +60,16 @@ class FRBCCEMController(NotControllableCEMController):
     def __init__(self, resource_manager_details: ResourceManagerDetails):
         super().__init__(resource_manager_details)
 
+        self.add_handler(FRBCInstruction, self.handle_instruction)
+
+    async def handle_instruction(
+        self, message: FRBCInstruction, channel: S2Channel, send_okay: Awaitable
+    ):
+
+        logger.info(message)
+
+        await send_okay
+
     async def send_frbc_system_description(
         self, channel: Optional[S2Channel], system_description: FRBCSystemDescription
     ):

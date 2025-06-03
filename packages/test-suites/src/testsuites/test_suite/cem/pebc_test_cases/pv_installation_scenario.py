@@ -105,13 +105,13 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
 
         dupe_power_constraint = self.power_constraint.model_copy()
         dupe_power_constraint.message_id = uuid.uuid4()
-        self.add_test_method(
+        await self.add_test_method(
             "9.3.1. Update Power Constraints (Initial)",
             self.test_send_pebc_power_constraint,
             dupe_power_constraint,
         )
 
-        self.add_test_method(
+        await self.add_test_method(
             "9.3.1. Update Power Constraints",
             self.test_send_pebc_power_constraint,
             self.power_constraint,
@@ -119,7 +119,7 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
 
         # ! No energy constraints since PV doesn't have them.
 
-        self.add_test_method(
+        await self.add_test_method(
             "9.2.5. Update Power Forecast",
             self.test_update_power_forecast,
             self.create_power_forecast(
@@ -128,7 +128,7 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
                 ]
             ),
         )
-        self.add_test_method(
+        await self.add_test_method(
             "9.2.4. Communicate Power Measurement",
             self.test_update_power_measurement,
             self.create_power_measurement(
@@ -137,7 +137,7 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
             10,
         )
 
-        self.add_test_method(
+        await self.add_test_method(
             "9.2.4. Communicate Power Measurement",
             self.test_update_power_measurement,
             self.create_power_measurement(
@@ -146,13 +146,13 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
             60,
         )
 
-        self.add_test_method(
+        await self.add_test_method(
             "Wait for instruction",
             self.wait_for_instruction,
             self.config.instruction_wait_timeout,
         )
 
-        self.add_test_method(
+        await self.add_test_method(
             "9.3.2. Revoke Power Constraints",
             self.test_revoke_power_constraint,
         )

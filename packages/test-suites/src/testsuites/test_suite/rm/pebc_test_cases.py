@@ -59,16 +59,16 @@ class PEBCTestCase(S2TestCase):
     async def generate_tests(self):
         await super().generate_tests()
 
-        self.add_test_method(
+        await self.add_test_method(
             "9.3.1. Update Power Constraints", self.validate_power_constraints_set
         )
-        self.add_test_method(
+        await self.add_test_method(
             "9.3.3. Update Energy Constraints", self.validate_energy_constraints_set
         )
 
         await self.generate_set_limit_range_instruction_tests()
 
-        # self.add_test_method(
+        # await self.add_test_method(
         #     "9.3.4. Revoke Energy Constraints", self.test_revoke_power_constraints
         # )
 
@@ -181,7 +181,7 @@ class PEBCTestCase(S2TestCase):
         #     self.channel,
         # )
 
-    def generate_curtail_commodity_quantity_tests(
+    async def generate_curtail_commodity_quantity_tests(
         self,
         power_constraints: PEBCPowerConstraints,
         commodity_quantity: CommodityQuantity,
@@ -212,7 +212,7 @@ class PEBCTestCase(S2TestCase):
             ]
             for upper, lower in limits:
 
-                self.add_test_method(
+                await self.add_test_method(
                     f"Succeed Curtail {commodity_quantity}",
                     self.send_power_envelope,
                     commodity_quantity=commodity_quantity,
@@ -223,7 +223,7 @@ class PEBCTestCase(S2TestCase):
                     fail_result_status=TestResultStatus.FAIL,
                 )
 
-                self.add_test_method(
+                await self.add_test_method(
                     f"Reject Curtail {commodity_quantity}",
                     self.send_power_envelope,
                     commodity_quantity=commodity_quantity,
@@ -253,7 +253,7 @@ class PEBCTestCase(S2TestCase):
 
         statuses: List[TestResultStatus] = []
         for commodity_quantity, ranges in limit_ranges.items():
-            self.generate_curtail_commodity_quantity_tests(
+            await self.generate_curtail_commodity_quantity_tests(
                 power_constraints=power_constraints,
                 commodity_quantity=commodity_quantity,
                 limit_ranges=ranges,

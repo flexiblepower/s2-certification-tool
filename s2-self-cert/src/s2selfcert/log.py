@@ -1,6 +1,29 @@
+import datetime
+import json
 import logging
 import logging.config
 from typing import Dict
+
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        # log_record = {
+        #     "timestamp": datetime.datetime.fromtimestamp(record.created).isoformat(),
+        #     "level": record.levelname,
+        #     "message": record.getMessage(),
+        #     "s2_message": record.__dict__["s2_message"],
+        #     "sender": record.__dict__["sender"],
+        #     "receiver": record.__dict__["receiver"],
+        # }
+
+        s2_message = record.__dict__["s2_message"]
+        sender = record.__dict__["sender"]
+        receiver = record.__dict__["receiver"]
+
+        message = f"{record.levelname}: {sender} -> {receiver} ({s2_message['message_type']})\n{json.dumps(s2_message, indent=2, default=str)}"
+
+        return message
+        # return json.dumps(log_record, default=str)
 
 
 def get_log_config(test_log_file_name=None) -> Dict:
@@ -21,7 +44,7 @@ def get_log_config(test_log_file_name=None) -> Dict:
                 "fmt": "%(name)s:%(lineno)d - %(levelname)s - %(message)s",
             },
             "message-logger": {
-                "()": "logging.Formatter",
+                "()": "s2selfcert.log.JsonFormatter",
                 "fmt": "%(asctime)s [MESSAGE LOGGER] %(message)s",
             },
             "plain": {
@@ -42,7 +65,7 @@ def get_log_config(test_log_file_name=None) -> Dict:
             },
             "messages-file-handler": {
                 "class": "logging.FileHandler",
-                "formatter": "plain",
+                "formatter": "message-logger",
                 "filename": "messages.log",
                 "mode": "w",
             },
@@ -72,7 +95,7 @@ def get_log_config(test_log_file_name=None) -> Dict:
             },
             "messages": {
                 "handlers": ["messages-file-handler"],
-                "level": "DEBUG",
+                "level": "INFO",
                 "propagate": False,
             },
         },

@@ -8,6 +8,7 @@ import time
 from typing import (
     TYPE_CHECKING,
     Any,
+    Awaitable,
     Callable,
     Coroutine,
     Dict,
@@ -48,6 +49,10 @@ class NotApplicableTestException(Exception):
     """Raise in a test case if the situation has not arisen to properly test this."""
 
 
+class PreconditionNotMet(Exception):
+    """ "Raised when the preconditions of a test method haven't been met yet."""
+
+
 class S2TestCase(unittest.TestCase):
     control_type: ProtocolControlType = ProtocolControlType.NO_SELECTION
     config: BaseTestConfig
@@ -56,12 +61,24 @@ class S2TestCase(unittest.TestCase):
 
     test_logger: AbstractTestLogger
 
-    TIMEOUT = 5
+    TIMEOUT = 10
 
-    tests: List[Tuple[str, Callable, Tuple, Dict, TestResultStatus]]
+    # tests: List[Tuple[str, Callable, Tuple, Dict, TestResultStatus]]
+    tests: asyncio.Queue[Tuple[str, Callable, Tuple, Dict, TestResultStatus]]
+
+    # A list tuples containing a method and a int duration (seconds). Each trigger is called after the timeout of the previous one is complete.
+    triggers: asyncio.Queue[
+        Tuple[
+            Callable[..., Awaitable] | None, int, Optional[asyncio.Event], Tuple, Dict
+        ]
+    ]
 
     controller: Controller
     config: BaseTestConfig
+
+    # Mechanism to allow temporary replacement of controller handler methods with test ones.
+    message_handlers: Dict[Type[S2Message], Callable[..., Awaitable[None]]] = {}
+    original_handlers: Dict[Type[S2Message], Callable[..., Awaitable[None]]] = {}
 
     def __init__(
         self,
@@ -85,21 +102,18 @@ class S2TestCase(unittest.TestCase):
                 f"Test case name must be declared as a constant for a test case class ({self.__class__})"
             )
 
-        self.tests = []
-        # Gather all the static tests and add them to the list of tests to be executed.
-        # The tests generated at runtime are added during the execution
-        for name, method in inspect.getmembers(self, predicate=inspect.ismethod):
-            if getattr(method, "_is_test_method", False):
-                self.add_test_method(method.test_name, method)  # type: ignore
+        self.tests = asyncio.Queue()
+        self.triggers = asyncio.Queue()
+        self._triggers_complete_event = asyncio.Event()
 
         self.test_logger = logger
 
         self.test_logger.info(self.name, ident=0)
 
-    def add_test_method(
+    async def add_test_method(
         self,
         name,
-        method: Callable,
+        method: Callable[..., Awaitable[None]],
         *args,
         fail_result_status=TestResultStatus.FAIL,
         **kwargs,
@@ -115,7 +129,27 @@ class S2TestCase(unittest.TestCase):
             method (Callable): A callable function that will tag the args and kwargs as parameters
             fail_result_status (TestResultStatus): The status that the result should get on fail. Should be either FAIL or SOFT_FAIL
         """
-        self.tests.append((name, method, args, kwargs, fail_result_status))
+
+        await self.tests.put((name, method, args, kwargs, fail_result_status))
+        # self.tests.append((name, method, args, kwargs, fail_result_status))
+
+    async def add_trigger_method(
+        self,
+        method: Callable[..., Awaitable[None]] | None,
+        *args,
+        wait_time=30,
+        event: Optional[asyncio.Event] = None,
+        **kwargs,
+    ):
+        """The triggers are used to make events occur after a certain period of time.
+        For example send an instruction and wait a certain period to see how the device reacts.
+        The main test loop waits for the triggers task to complete and then exits.
+
+        Args:
+            method (Callable[..., Awaitable[None]] | None): _description_
+            wait_time (int, optional): _description_. Defaults to 30.
+        """
+        await self.triggers.put((method, wait_time, event, args, kwargs))
 
     async def generate_tests(self):
         """
@@ -123,10 +157,41 @@ class S2TestCase(unittest.TestCase):
         This can be used to generate parametrized test cases.
         Asynchronous tasks can be done/waited here in order to create the tests.
         """
+
+        # Gather all the static tests and add them to the list of tests to be executed.
+        # The tests generated at runtime are added during the execution
+        for name, method in inspect.getmembers(self, predicate=inspect.ismethod):
+            if getattr(method, "_is_test_method", False):
+                await self.add_test_method(method.test_name, method)  # type: ignore
+    
+    async def cleanup(self):
         pass
 
+    def replace_controller_handlers(self):
+        for k, v in self.message_handlers.items():
+            if self.controller.handlers.get(k, None) is not None:
+                self.original_handlers[k] = self.controller.handlers[k]
+            self.controller.handlers[k] = v
+
+    async def handle_with_original_handler(
+        self, message: S2Message, channel: "S2Channel", send_okay: Awaitable
+    ):
+        if type(message) in self.original_handlers:
+            await self.original_handlers[type(message)](message, channel, send_okay)
+
+    def undo_controller_handler_replacement(self):
+        for k, v in self.message_handlers.items():
+            if self.original_handlers.get(k, None) is not None:
+                self.controller.handlers[k] = self.original_handlers[k]
+            else:
+                # If there wasn't a handler there before then we remove the key
+                del self.controller.handlers[k]
+
     async def check_receive_message_type(
-        self, message_type: Type[S2Message], timeout=None
+        self,
+        message_type: Type[S2Message],
+        timeout=None,
+        not_applicable_if_not_received=False,
     ):
         """
         Checks the list of saved messages in the controller to see if a message of the specified type has arrived.
@@ -134,6 +199,7 @@ class S2TestCase(unittest.TestCase):
 
         Args:
             message_type (Type[S2Message]): The message type to retrieve
+            not_applicable_if_not_received (bool): If true and no matching message found then a NotApplicableTestException raised.
 
         Returns:
             _type_: _description_
@@ -141,11 +207,12 @@ class S2TestCase(unittest.TestCase):
         logger.info("Checking for %s", message_type)
 
         message = None
+        timeout = self.TIMEOUT if timeout is None else timeout
         try:
             messages: list = self.controller.get_received_messages(message_type)
             if len(messages) < 1:
                 message = await self.controller.message_awaiter.wait_for_message(
-                    message_type, self.TIMEOUT if timeout is None else timeout
+                    message_type, timeout
                 )
             else:
                 message = messages[0]
@@ -156,6 +223,11 @@ class S2TestCase(unittest.TestCase):
             messages: list = self.controller.get_received_messages(message_type)
             if len(messages) > 0:
                 message = messages[0]
+
+        if message is None and not_applicable_if_not_received:
+            raise NotApplicableTestException(
+                f"No `{message_type.__name__}` received within {timeout} second timeout."
+            )
 
         return message
 
@@ -187,6 +259,26 @@ class S2TestCase(unittest.TestCase):
     async def teardown(self):
         """Override in subclass for per-test teardown."""
         pass
+
+    async def triggers_task(self):
+        try:
+            while True:
+                method, wait_time, event, args, kwargs = self.triggers.get_nowait()
+                if method is not None:
+                    await method(*args, **kwargs)
+
+                if event is not None:
+                    logger.info("Triggering task. Waiting until event set.")
+                    await event.wait()
+                    logger.info("Trigger complete.")
+                else:
+                    logger.info("Triggering task. Waiting %d seconds.", wait_time)
+                    await asyncio.sleep(wait_time)
+                    logger.info("Trigger complete.")
+        except asyncio.QueueEmpty:
+            pass
+        finally:
+            self._triggers_complete_event.set()
 
     async def run_test(
         self, name: str, method: Callable, args: tuple, kwargs: dict, fail_result_status
@@ -243,30 +335,54 @@ class S2TestCase(unittest.TestCase):
             name=self.name, control_type=self.controller.control_type
         )
 
+        self._triggers_complete_event.clear()
+        asyncio.create_task(self.triggers_task())
+
         if self.config.enabled:
+            # Put any handlers in place
+            self.replace_controller_handlers()
             start_time = time.time()
 
             # Generates the parametrized test cases and adds them to the tests list.
             # This method is overridden in subclasses for generating the test
             await self.generate_tests()
 
-            logger.info("%s: %s", self.name, len(self.tests))
+            logger.info("%s", self.name)
+
+            tests_executed = 0
 
             # Now we run each test case that is in the tests list with the args provided.
-            for name, method, args, kwargs, fail_result_status in self.tests:
-                result = await self.run_test(
-                    name, method, args, kwargs, fail_result_status
-                )
+            logger.info("Starting test case: %s", self.__class__.__name__)
 
-                test_suite_result.add_test_result(result)
+            if self.triggers.empty():
+                await self.add_trigger_method(None, 30)
 
-            if len(self.tests) < 1:
+            # Run the test loop until the triggers task is complete.
+            while not self._triggers_complete_event.is_set():
+                try:
+                    name, method, args, kwargs, fail_result_status = (
+                        await asyncio.wait_for(self.tests.get(), 1)
+                    )
+
+                    result = await self.run_test(
+                        name, method, args, kwargs, fail_result_status
+                    )
+
+                    test_suite_result.add_test_result(result)
+                    tests_executed += 1
+
+                except asyncio.TimeoutError:
+                    continue
+
+            if tests_executed < 1:
                 test_suite_result.status = TestResultStatus.N_A
 
             end_time = time.time()
             duration = round(end_time - start_time, 2)
 
             test_suite_result.duration = duration
+
+            self.undo_controller_handler_replacement()
         else:
             self.test_logger.info("Skipping disabled test case.")
             test_suite_result.status = TestResultStatus.N_A

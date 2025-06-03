@@ -8,7 +8,6 @@ from connectivity.config import PEBCCEMTestConfig
 from testsuites.certificate.certificate import ComplianceReport
 from testsuites.controllers.cem.pebc_controller import PEBCCEMController
 from testsuites.test_logger import TestLogger
-from testsuites.test_suite.rm.base_test_case import NoSelectionTestCase
 from testsuites.test_suite.test_suite import NotApplicableTestException, S2TestCase
 from testsuites.util import current_timezone_time
 

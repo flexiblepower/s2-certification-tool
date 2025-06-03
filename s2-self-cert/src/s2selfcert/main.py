@@ -48,7 +48,11 @@ class OnCompleteCallback:
 
 async def run_application(args):
 
-    logging.config.dictConfig(get_log_config(args.log_file))
+    try:
+        logging.config.dictConfig(get_log_config(args.log_file))
+    except Exception as e:
+        print(e)
+        return
 
     config: Config = load_config(args.config)
     test_logger = TestLogger(logger=logging.getLogger("test-suite-logger"))

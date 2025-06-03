@@ -1,8 +1,8 @@
 import asyncio
 import json
-from typing import Optional, Type
+from typing import Literal, Optional, Type
 import uuid
-from s2python.common import ReceptionStatus, ReceptionStatusValues
+from s2python.common import ReceptionStatus, ReceptionStatusValues, EnergyManagementRole
 from s2python.message import S2Message
 from s2python.reception_status_awaiter import ReceptionStatusAwaiter
 from s2python.s2_parser import S2Parser
@@ -14,7 +14,18 @@ from .channel import Channel
 
 import logging
 
+
+def reverse_role(role: EnergyManagementRole):
+    roles = {
+        EnergyManagementRole.RM: EnergyManagementRole.CEM,
+        EnergyManagementRole.CEM: EnergyManagementRole.RM,
+    }
+    return roles[role]
+
+
 logger = logging.getLogger(__name__)
+
+message_logger = logging.getLogger("messages")
 
 
 class SendOkay:
@@ -62,6 +73,8 @@ class S2Channel(Channel[S2Message, str]):
 
     reception_status_awaiter: ReceptionStatusAwaiter
 
+    role: Optional[EnergyManagementRole] = None
+
     def __init__(self, connection: ConnectionAdapter) -> None:
         super().__init__(connection)
 
@@ -70,7 +83,42 @@ class S2Channel(Channel[S2Message, str]):
 
         self.message_queue = asyncio.Queue()
 
+    def log_messages(
+        self, message: S2Message, direction: Literal["INCOMING", "OUTGOING"]
+    ):
+        msg_dict = message.to_dict()
+        sender = None
+        if self.role is not None:
+            sender = (
+                reverse_role(self.role) if direction == "INCOMING" else self.role
+            ).name
+            receiver = (
+                reverse_role(self.role) if direction == "OUTGOING" else self.role
+            ).name
+
+        message_logger.log(
+            level=(
+                logging.DEBUG
+                if msg_dict["message_type"] == "ReceptionStatus"
+                else logging.INFO
+            ),
+            msg=direction,
+            extra={
+                "s2_message": msg_dict,
+                "sender": sender,
+                "receiver": receiver,
+            },
+        )
+
     async def send(self, message: S2Message):
+        if message.message_type == "Handshake" and self.role is None:
+            self.role = (
+                EnergyManagementRole.CEM
+                if message.role == EnergyManagementRole.RM
+                else EnergyManagementRole.RM
+            )
+
+        self.log_messages(message, "OUTGOING")
         str_msg = message.to_json()
 
         return await self.connection.send(str_msg)
@@ -124,6 +172,15 @@ class S2Channel(Channel[S2Message, str]):
     async def process_received_message(self, message: str) -> S2Message | None:
         try:
             s2_msg: S2Message = self.s2_parser.parse_as_any_message(message)
+
+            if s2_msg.message_type == "Handshake" and self.role is None:
+                self.role = (
+                    EnergyManagementRole.CEM
+                    if s2_msg.role == EnergyManagementRole.RM
+                    else EnergyManagementRole.RM
+                )
+
+            self.log_messages(s2_msg, "INCOMING")
         except json.JSONDecodeError:
             await self.send(
                 ReceptionStatus(

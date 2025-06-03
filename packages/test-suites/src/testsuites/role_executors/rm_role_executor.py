@@ -10,6 +10,8 @@ import uuid
 from s2python.common import (
     ControlType as ProtocolControlType,
     EnergyManagementRole,
+    SelectControlType,
+    ReceptionStatusValues,
 )
 from s2python.message import S2Message
 
@@ -18,6 +20,7 @@ from testsuites.controllers import (
     BaseRMController,
 )
 from .base_role_executor import (
+    ExitMainLoopException,
     TestRoleExecutor,
     execute_as_test,
 )
@@ -35,7 +38,9 @@ class RMTestExecutor(TestRoleExecutor):
     async def main_loop(self):
         # This sets the main loop started event so that the message processing can start.
         await super().main_loop()
+
         logger.info("Starting Main Loop for RM Test Executor.")
+
         if self.channel is None:
             raise ValueError("Channel not set.")
 
@@ -52,6 +57,8 @@ class RMTestExecutor(TestRoleExecutor):
 
                 await self.execute_test_suite()
 
+            await self.test_select_not_supported_control_type()
+
             await self.controller.send_session_request_disconnect(self.channel)
             self.test_logger.success("Sent Graceful Disconnect.", ident=0)
 
@@ -59,11 +66,42 @@ class RMTestExecutor(TestRoleExecutor):
         except asyncio.CancelledError:
             logger.warning("Main loop was cancelled.")
             raise  # Propagate for TaskGroup
+        except ExitMainLoopException:
+            pass
         except Exception as e:
             logger.exception("Exception in main_loop: %s", e)
             raise
         finally:
             self.test_logger.info("Main loop finished. Signaling stop.", ident=0)
+
+    @execute_as_test(
+        test_name="9.2.2. Activate Control Type - Not Available",
+        error_message_prefix="Resource Manager accepted a control type that it doesn't support: ",
+    )
+    async def test_select_not_supported_control_type(self):
+        if self.channel is None:
+            raise ValueError("Channel not provided")
+
+        # Get all the control types that the RM does not implement
+        control_types = set([member for member in ProtocolControlType])
+        not_available_control_types = control_types.difference(
+            self.available_control_types
+        )
+        # Remove the no selection type since all RMs support it and it isn't explicitly part of available control types
+        not_available_control_types.remove(ProtocolControlType.NO_SELECTION)
+        not_available_control_types.remove(ProtocolControlType.NOT_CONTROLABLE)
+
+        for control_type in not_available_control_types:
+            reception_status = await self.channel.send_msg_and_await_reception_status(
+                SelectControlType(message_id=uuid.uuid4(), control_type=control_type),
+                raise_on_error=False,
+            )
+
+            # RM should reply with non-Ok reception status since it should reject the selected control type
+            if reception_status.status == ReceptionStatusValues.OK:
+                raise AssertionError(
+                    f"RM Accepted selection of control type `{control_type}` which it doesn't support."
+                )
 
     def set_control_type(self, control_type: ProtocolControlType):
         handshake_received_event = self.controller._handshake_received_event

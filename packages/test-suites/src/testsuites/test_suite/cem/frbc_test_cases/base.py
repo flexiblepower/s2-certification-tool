@@ -43,7 +43,6 @@ from testsuites.certificate.certificate import (
 )
 from connectivity.config import FRBCCEMTestConfig
 from testsuites.controllers import FRBCCEMController
-from testsuites.test_suite.rm.base_test_case import NoSelectionTestCase
 from testsuites.test_suite.test_suite import (
     NotApplicableTestException,
     S2TestCase,

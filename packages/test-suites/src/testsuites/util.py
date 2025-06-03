@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 import logging
 from typing import Dict, Optional
+from s2python.common import EnergyManagementRole
 
 logger = logging.getLogger(__name__)
 

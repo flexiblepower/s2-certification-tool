@@ -320,12 +320,12 @@ class FRBCBatteryScenarioTestCase(FRBCBaseScenarioTestCase):
     async def generate_tests(self):
         await super().generate_tests()
         # Putting the tests here allows me to enforce the ordering.
-        self.add_test_method(
+        await self.add_test_method(
             "9.6.1 Update System Description (initial)",
             self.test_send_frbc_system_description,
             self.system_description,
         )
-        self.add_test_method(
+        await self.add_test_method(
             "9.6.3. Update Leakage Behaviour (Initial)",
             self.test_update_leakage_behaviour,
             self.leakage_behavior,
@@ -342,22 +342,22 @@ class FRBCBatteryScenarioTestCase(FRBCBaseScenarioTestCase):
         storage_status = FRBCStorageStatus(
             message_id=uuid.uuid4(), present_fill_level=self.fill_level
         )
-        self.add_test_method(
+        await self.add_test_method(
             "Update Actuator Status (Idle)",
             self.test_update_actuator_status,
             actuator_status,
         )
-        self.add_test_method(
+        await self.add_test_method(
             "Update Storage Status (Initial)",
             self.test_update_storage_status,
             storage_status,
         )
-        self.add_test_method(
+        await self.add_test_method(
             "Update Usage Forecast (Initial)",
             self.test_update_usage_forecast,
             self.forecast(),
         )
-        self.add_test_method("Simulation", self.test_simulate)
+        await self.add_test_method("Simulation", self.test_simulate)
 
         # # Now start discharging
         # actuator_status = FRBCActuatorStatus(
@@ -371,12 +371,12 @@ class FRBCBatteryScenarioTestCase(FRBCBaseScenarioTestCase):
         # storage_status = FRBCStorageStatus(
         #     message_id=uuid.uuid4(), present_fill_level=50
         # )
-        # self.add_test_method(
+        # await self.add_test_method(
         #     "Update Actuator Status (Charging)",
         #     self.test_update_actuator_status,
         #     actuator_status,
         # )
-        # self.add_test_method(
+        # await self.add_test_method(
         #     "Update Storage Status (50% - Plugged in)",
         #     self.test_update_storage_status,
         #     storage_status,
@@ -391,21 +391,21 @@ class FRBCBatteryScenarioTestCase(FRBCBaseScenarioTestCase):
         #             PowerValue(commodity_quantity=self.commodity_quantity, value=10000)
         #         ],
         #     )
-        #     self.add_test_method(
+        #     await self.add_test_method(
         #         "Update Power Measurement",
         #         self.test_update_power_measurement,
         #         power_measurement,
         #         2,
         #     )
 
-        # self.add_test_method(
+        # await self.add_test_method(
         #     "Wait for instruction",
         #     self.wait_for_instruction,
         #     self.config.instruction_wait_timeout,
         # )
 
         # # Goes at the end since a number of other tests require system description as a precondition.
-        # self.add_test_method(
+        # await self.add_test_method(
         #     "9.6.2. Revoke System Description",
         #     self.test_revoke_system_description,
         # )

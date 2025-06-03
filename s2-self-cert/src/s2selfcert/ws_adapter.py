@@ -1,3 +1,6 @@
+import datetime
+import json
+from typing import Literal
 from websockets.asyncio.connection import Connection as WSConnection
 
 from websockets.exceptions import ConnectionClosed, WebSocketException
@@ -11,7 +14,6 @@ from connectivity.connection_adapter import (
 import logging
 
 logger = logging.getLogger(__name__)
-message_logger = logging.getLogger("messages")
 
 
 class WebSocketConnectionAdapter(ConnectionAdapter[str]):
@@ -25,7 +27,6 @@ class WebSocketConnectionAdapter(ConnectionAdapter[str]):
             raise ConnectionClosed("Websocket is closed.")
         try:
             message = await self.ws_connection.recv()
-            message_logger.debug("[INCOMING] %s", message)
             if isinstance(message, bytes):
                 return message.decode("utf-8")
             return message
@@ -35,11 +36,11 @@ class WebSocketConnectionAdapter(ConnectionAdapter[str]):
         except WebSocketException as e:
             raise ConnectionProtocolError(f"Websocket protocol error: {e}")
         except Exception as e:
+            logger.exception("error whilst sending message")
             raise ConnectionError(f"Unknown websocket error: {e}")
 
     async def send(self, message: str):
         try:
-            message_logger.debug("[OUTGOING] %s", message)
             await self.ws_connection.send(message)
         except ConnectionClosed:
             self.is_open = False
@@ -47,6 +48,7 @@ class WebSocketConnectionAdapter(ConnectionAdapter[str]):
         except WebSocketException as e:
             raise ConnectionProtocolError(f"Websocket protocol error: {e}")
         except Exception as e:
+            logger.exception("error whilst sending message")
             raise ConnectionError(f"Unknown websocket error: {e}")
 
     @property

@@ -78,6 +78,7 @@ class TestLogger(AbstractTestLogger):
 
     def error(self, message, ident=2):
         self.logger.warning("%s[FAIL] %s", " " * ident, message)
+        # self.logger.exception("%s[FAIL] %s", " " * ident, message)
 
     def level_to_function(self, level) -> Callable[[str, int], None]:
         return {
