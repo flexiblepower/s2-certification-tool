@@ -12,9 +12,8 @@ class NoSelectionRMTestConfig(BaseTestConfig):
 
 
 class PEBCRMTestConfig(BaseTestConfig):
-    status_update_frequency: int
     status_update_frequency_buffer: int = 5
-    sends_energy_constraints: bool = True
+    sends_energy_constraints: Optional[bool] = None
 
 
 class FRBCRMTestConfig(BaseTestConfig):

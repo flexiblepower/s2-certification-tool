@@ -183,7 +183,7 @@ class S2TestCase(unittest.TestCase):
         for k, v in self.message_handlers.items():
             if self.original_handlers.get(k, None) is not None:
                 self.controller.handlers[k] = self.original_handlers[k]
-            else:
+            elif k in self.controller.handlers:
                 # If there wasn't a handler there before then we remove the key
                 del self.controller.handlers[k]
 

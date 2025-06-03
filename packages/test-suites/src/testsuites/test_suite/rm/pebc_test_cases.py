@@ -1,5 +1,8 @@
+import asyncio
+from dataclasses import dataclass
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
+import uuid
 
 from testsuites.certificate.certificate import (
     ComplianceReport,
@@ -8,6 +11,7 @@ from connectivity.config import PEBCRMTestConfig
 from connectivity.s2_channel import S2Channel
 from testsuites.controllers import PEBCRMController
 
+from testsuites.test_suite.rm.base_test_case import NotControllableRMTestCase
 from testsuites.test_suite.test_suite import (
     NotApplicableTestException,
     S2TestCase,
@@ -22,6 +26,8 @@ from s2python.common import (
     CommodityQuantity,
     NumberRange,
     InstructionStatus,
+    ReceptionStatus,
+    Duration,
 )
 from s2python.pebc import (
     PEBCAllowedLimitRange,
@@ -30,18 +36,33 @@ from s2python.pebc import (
     PEBCPowerEnvelopeElement,
     PEBCPowerEnvelopeLimitType,
     PEBCEnergyConstraint,
+    PEBCInstruction,
 )
 
 from itertools import product
 
+from testsuites.util import current_timezone_time
+
 logger = logging.getLogger(__name__)
 
 
-class PEBCTestCase(S2TestCase):
+@dataclass
+class InstructionTestState:
+    instruction: PEBCInstruction
+    reception_status: ReceptionStatus
+    expected_status: InstructionStatus
+    status_update: Optional[InstructionStatusUpdate] = None
+
+
+class PEBCTestCase(NotControllableRMTestCase):
     name = "9.3. Power Envelope Based Control Tasks"
     control_type = ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL
     controller: PEBCRMController
     config: PEBCRMTestConfig
+
+    _power_constraints_received_event: asyncio.Event
+
+    instruction_test_states: Dict[uuid.UUID, InstructionTestState] = {}
 
     def __init__(
         self,
@@ -53,20 +74,28 @@ class PEBCTestCase(S2TestCase):
     ):
         super().__init__(config, channel, controller, report, logger)
 
-    async def setup(self):
-        await self.controller._power_constraints_received.wait()
+        self._power_constraints_received_event = asyncio.Event()
+
+        self.message_handlers[PEBCEnergyConstraint] = self.handle_energy_constraints
+        self.message_handlers[PEBCPowerConstraints] = self.handle_power_constraints
+        self.message_handlers[InstructionStatusUpdate] = (
+            self.handle_instruction_status_update
+        )
 
     async def generate_tests(self):
         await super().generate_tests()
 
-        await self.add_test_method(
-            "9.3.1. Update Power Constraints", self.validate_power_constraints_set
+        await self.add_trigger_method(
+            None, wait_time=0, event=self._power_constraints_received_event
         )
-        await self.add_test_method(
-            "9.3.3. Update Energy Constraints", self.validate_energy_constraints_set
-        )
+        # await self.add_test_method(
+        #     "9.3.1. Update Power Constraints", self.validate_power_constraints_set
+        # )
+        # await self.add_test_method(
+        #     "9.3.3. Update Energy Constraints", self.validate_energy_constraints_set
+        # )
 
-        await self.generate_set_limit_range_instruction_tests()
+        # await self.generate_set_limit_range_instruction_tests()
 
         # await self.add_test_method(
         #     "9.3.4. Revoke Energy Constraints", self.test_revoke_power_constraints
@@ -90,49 +119,65 @@ class PEBCTestCase(S2TestCase):
             f"{precondition_id + ' ' if precondition_id is not None else '' }Task Precondition 'Activate Control Type' where ControlType is PEBC is complete.",
         )
 
-    async def wait_until_power_constraints_set(self):
-        power_constraints = self.controller.power_constraints
-        if (
-            power_constraints is None
-            and not self.controller._power_constraints_received.is_set()
-        ):
-            logger.info(
-                "Waiting. %s, %s",
-                power_constraints,
-                self.controller._power_constraints_received,
-            )
-            await self.controller._power_constraints_received.wait()
-            logger.info("Power Constraints is set.")
+    async def handle_power_constraints(
+        self, message: PEBCPowerConstraints, channel: "S2Channel", send_okay
+    ):
+        await self.handle_with_original_handler(message, channel, send_okay)
 
-    async def validate_power_constraints_set(self):
-        await self.control_type_set_pebc_precondition("9.3.1.2.")
-        await self.wait_until_power_constraints_set()
-
-    async def validate_energy_constraints_set(self):
-        if not self.config.sends_energy_constraints:
-            raise NotApplicableTestException(
-                "This device does not send Energy Constraints messages."
-            )
-
-        await self.control_type_set_pebc_precondition("9.3.3.2.")
-
-        message = await self.controller.message_awaiter.wait_for_message(
-            PEBCEnergyConstraint, self.TIMEOUT
+        await self.add_test_method(
+            "Update PEBC Power Constraint", self.validate_power_constraints, message
         )
 
-        # TODO Add check for precondition that energy constraints are within power constraints limits
+        # First phase of testing is just letting the RM send readings.
+        await self.add_trigger_method(None, wait_time=10, event=None)
+        # Then send all send one curtailment instruction at a time and see how it reacts.
+        await self.generate_set_limit_range_instruction_triggers()
+
+        self._power_constraints_received_event.set()
+
+    async def handle_energy_constraints(
+        self, message: PEBCEnergyConstraint, channel: "S2Channel", send_okay
+    ):
+        await self.handle_with_original_handler(message, channel, send_okay)
+
+        await self.add_test_method(
+            "Update PEBC Energy Constraint", self.validate_energy_constraints, message
+        )
+
+    async def validate_power_constraints(self, power_constraint: PEBCPowerConstraints):
+        await self.control_type_set_pebc_precondition("9.3.1.2.")
+
+        self.assertIsNotNone(power_constraint)
+        self.assertEqual(type(power_constraint), PEBCPowerConstraints)
+
+    async def validate_energy_constraints(
+        self,
+        energy_constraint: PEBCEnergyConstraint,
+    ):
+        await self.control_type_set_pebc_precondition("9.3.1.2.")
+        self.assertIsNotNone(energy_constraint)
+        self.assertEqual(type(energy_constraint), PEBCEnergyConstraint)
+
+        power_constraint = self.controller.get_power_constraint(
+            energy_constraint.valid_from, energy_constraint.valid_until
+        )
+
+        self.assertIsNotNone(
+            power_constraint,
+            f"Provided energy constraint does not fit withing the valid_from/to range of the power constraints.",
+        )
 
     def create_power_envelope(
         self, commodity_quantity, lower_limit, upper_limit, duration=3600
     ) -> PEBCPowerEnvelope:
         return PEBCPowerEnvelope(
-            id="test_env",  # type: ignore
+            id=str(uuid.uuid4()),  # type: ignore
             commodity_quantity=commodity_quantity,
             power_envelope_elements=[
                 PEBCPowerEnvelopeElement(
                     lower_limit=lower_limit,
                     upper_limit=upper_limit,
-                    duration=duration,  # type: ignore
+                    duration=Duration(duration),
                 )
             ],
         )
@@ -152,42 +197,67 @@ class PEBCTestCase(S2TestCase):
             upper_limit=upper_limit,
             duration=duration,
         )
-        # Prepare coroutines first so the events are waiting in the awaiter.
-        # This avoids the case where the message somehow arrives between sending the message and starting to await.
-        # This is highly unlikely but might as well make sure!
-        # power_measurement_coroutine = self.controller.message_awaiter.wait_for_message(
-        #     PowerMeasurement, 60
-        # )
-        status_update_coroutine = self.controller.message_awaiter.wait_for_message(
-            InstructionStatusUpdate, 10
+
+        instruction, reception_status = (
+            await self.controller.send_power_envelope_instruction(
+                self.channel, [power_envelope]
+            )
         )
 
-        instruction = await self.controller.send_power_envelope_instruction(
-            self.channel, [power_envelope]
+        self.instruction_test_states[instruction.id] = InstructionTestState(
+            instruction=instruction,
+            reception_status=reception_status,
+            expected_status=expected_instruction_status,
         )
 
-        status_update = await status_update_coroutine
+    async def handle_instruction_status_update(
+        self, message: InstructionStatusUpdate, channel: "S2Channel", send_okay
+    ):
+        await send_okay
 
-        self.assertEqual(type(status_update), InstructionStatusUpdate)
-        if type(status_update) != InstructionStatusUpdate:
-            return
+        await self.add_test_method(
+            "Validate Instruction Status Update",
+            self.validate_instruction_status_update,
+            message,
+        )
 
-        self.assertEqual(status_update.instruction_id, instruction.id)
+    async def validate_instruction_status_update(
+        self, instruction_status_update: InstructionStatusUpdate
+    ):
 
-        self.assertEqual(status_update.status_type, expected_instruction_status)
+        self.assertIsNotNone(instruction_status_update)
+        self.assertEqual(type(instruction_status_update), InstructionStatusUpdate)
+
+        state = self.instruction_test_states.get(
+            instruction_status_update.instruction_id, None
+        )
+        if state is None:
+            raise AssertionError(
+                "No Instruction Test State. Was this instruction sent?"
+            )
+
+        instruction = state.instruction
+
+        self.assertIsNotNone(instruction)
+        self.assertEqual(type(instruction), PEBCInstruction)
+
+        self.assertEqual(instruction_status_update.instruction_id, instruction.id)
+
+        self.assertEqual(instruction_status_update.status_type, state.expected_status)
 
         # TODO: Revoke instruction
         # await self.controller.send_revoke_power_envelope_instruction(
         #     self.channel,
         # )
 
-    async def generate_curtail_commodity_quantity_tests(
+    async def generate_curtail_commodity_quantity_instruction_triggers(
         self,
-        power_constraints: PEBCPowerConstraints,
         commodity_quantity: CommodityQuantity,
         limit_ranges: List[PEBCAllowedLimitRange],
         duration=3600,
     ):
+        """This function generates a curtailment instruction trigger for each combination of upper and lower limits."""
+
         logger.info("Curtailing %s", commodity_quantity)
 
         lower_limits: List[NumberRange] = []
@@ -203,41 +273,44 @@ class PEBCTestCase(S2TestCase):
             product(lower_limits, upper_limits)
         )
 
+        limits = []
         for lower_limit, upper_limit in limit_range_pairs:
-            limits = [
+            limits += [
                 (lower_limit.start_of_range, upper_limit.start_of_range),
                 (lower_limit.start_of_range, upper_limit.end_of_range),
                 (lower_limit.end_of_range, upper_limit.start_of_range),
                 (lower_limit.end_of_range, upper_limit.end_of_range),
             ]
-            for upper, lower in limits:
 
-                await self.add_test_method(
-                    f"Succeed Curtail {commodity_quantity}",
-                    self.send_power_envelope,
-                    commodity_quantity=commodity_quantity,
-                    lower_limit=lower,
-                    upper_limit=upper,
-                    duration=duration,
-                    expected_instruction_status=InstructionStatus.SUCCEEDED,
-                    fail_result_status=TestResultStatus.FAIL,
-                )
+        # Remove duplicates
+        limits = list(set(limits))
 
-                await self.add_test_method(
-                    f"Reject Curtail {commodity_quantity}",
-                    self.send_power_envelope,
-                    commodity_quantity=commodity_quantity,
-                    lower_limit=lower_limit.end_of_range - 1,
-                    upper_limit=upper_limit.start_of_range + 1,
-                    duration=duration,
-                    expected_instruction_status=InstructionStatus.REJECTED,
-                    fail_result_status=TestResultStatus.FAIL,
-                )
+        for lower, upper in limits:
+            await self.add_trigger_method(
+                self.send_power_envelope,
+                commodity_quantity=commodity_quantity,
+                lower_limit=lower,
+                upper_limit=upper,
+                duration=duration,
+                expected_instruction_status=InstructionStatus.SUCCEEDED,
+                wait_time=10,
+            )
 
-    async def generate_set_limit_range_instruction_tests(self):
-        await self.wait_until_power_constraints_set()
+            await self.add_trigger_method(
+                self.send_power_envelope,
+                commodity_quantity=commodity_quantity,
+                lower_limit=lower_limit.end_of_range - 1,
+                upper_limit=upper_limit.start_of_range + 1,
+                duration=duration,
+                expected_instruction_status=InstructionStatus.REJECTED,
+                wait_time=10,
+            )
 
-        power_constraints = self.controller.power_constraints
+    async def generate_set_limit_range_instruction_triggers(self):
+        # TODO: During the time waiting for all of the instructions to send there could be a new power constraint. Not really sure how to solve this just yet.
+        power_constraints = self.controller.get_power_constraint(
+            current_timezone_time(), None
+        )
 
         if power_constraints is None:
             raise ValueError("Power Constraints not set.")
@@ -251,14 +324,8 @@ class PEBCTestCase(S2TestCase):
             else:
                 limit_ranges[limit_range.commodity_quantity] = [limit_range]
 
-        statuses: List[TestResultStatus] = []
         for commodity_quantity, ranges in limit_ranges.items():
-            await self.generate_curtail_commodity_quantity_tests(
-                power_constraints=power_constraints,
+            await self.generate_curtail_commodity_quantity_instruction_triggers(
                 commodity_quantity=commodity_quantity,
                 limit_ranges=ranges,
             )
-
-        self.test_logger.log_status_list(
-            "Curtailment Instruction Test Complete.", statuses, ident=0
-        )
