@@ -107,6 +107,8 @@ class FRBCTestCase(NotControllableRMTestCase):
         await self.add_trigger_method(
             None, wait_time=5, event=self._system_description_received_event
         )
+
+        # Wait until the initial storage status comes in since it's necessary for other checks.
         await self.add_trigger_method(
             None, wait_time=5, event=self._initial_storage_status
         )
@@ -114,7 +116,9 @@ class FRBCTestCase(NotControllableRMTestCase):
     def update_system_description_precondition(
         self, precondition_id: str | None = None
     ):
-        """Tests the system description precondition.
+        """
+        A function that can be called at the start of a validation to check that
+        system description has been received as a precondition for the test.
 
         Args:
             precondition_id (string): The ID from the S2 Specification
@@ -130,6 +134,11 @@ class FRBCTestCase(NotControllableRMTestCase):
     async def handle_frbc_system_description(
         self, message: FRBCSystemDescription, channel: "S2Channel", send_okay
     ):
+        """
+        Handler for the FRBC System Description Message.
+        Uses the provided actuators to perform a Depth First Traversal of transitions graph.
+
+        """
         await self.handle_with_original_handler(message, channel, send_okay)
 
         await self.add_test_method(
@@ -146,6 +155,8 @@ class FRBCTestCase(NotControllableRMTestCase):
                 actuator.from_transitions_map,
             )
             for transition in steps:
+                # Add a trigger which sends this instruction. Wait some time to see how the RM reacts
+                # TODO: Make time configurable
                 await self.add_trigger_method(
                     self.send_operation_mode_transition_instruction,
                     actuator.id,

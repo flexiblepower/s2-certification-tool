@@ -36,11 +36,6 @@ class NotControllableRMTestCase(S2TestCase):
 
     async def setup(self):
         await self.controller._resource_manager_details_received.wait()
-        logger.info(
-            "%s, %s",
-            self.controller._resource_manager_details_received,
-            self.controller.resource_manager_details,
-        )
 
         self.message_handlers[PowerForecast] = self.handle_power_forecast
         self.message_handlers[PowerMeasurement] = self.handle_power_measurements

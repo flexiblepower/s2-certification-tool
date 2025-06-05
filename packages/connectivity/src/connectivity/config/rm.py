@@ -12,8 +12,19 @@ class NoSelectionRMTestConfig(BaseTestConfig):
 
 
 class PEBCRMTestConfig(BaseTestConfig):
-    status_update_frequency_buffer: int = 5
-    sends_energy_constraints: Optional[bool] = None
+    # Indicates whether of not this device sends energy constraints.
+    sends_energy_constraints: Optional[bool] = True
+
+    # The time in seconds to wait for the energy constraints before timing out.
+    energy_constraints_wait_timeout: Optional[int] = 0
+
+    # The amount of time to wait after sending an instruction before sending the next instruction
+    # (in addition to the instruction processing time specified in RM Details)
+    instruction_trigger_wait_time: int = 5
+
+    # Indicates whether to wait for the specified instruction processing time (specified in RM details)
+    # after sending an instruction
+    wait_instruction_processing_time: bool = True
 
 
 class FRBCRMTestConfig(BaseTestConfig):

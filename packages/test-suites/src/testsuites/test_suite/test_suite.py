@@ -69,7 +69,11 @@ class S2TestCase(unittest.TestCase):
     # A list tuples containing a method and a int duration (seconds). Each trigger is called after the timeout of the previous one is complete.
     triggers: asyncio.Queue[
         Tuple[
-            Callable[..., Awaitable] | None, int, Optional[asyncio.Event], Tuple, Dict
+            Optional[Callable[..., Awaitable]], # Trigger function
+            Optional[int], # Wait time. If event provided then timeout
+            Optional[asyncio.Event], # Trigger event
+            Tuple, # Args
+            Dict, # Kwargs
         ]
     ]
 
@@ -137,7 +141,7 @@ class S2TestCase(unittest.TestCase):
         self,
         method: Callable[..., Awaitable[None]] | None,
         *args,
-        wait_time=30,
+        wait_time: Optional[int] = None,
         event: Optional[asyncio.Event] = None,
         **kwargs,
     ):
@@ -163,7 +167,7 @@ class S2TestCase(unittest.TestCase):
         for name, method in inspect.getmembers(self, predicate=inspect.ismethod):
             if getattr(method, "_is_test_method", False):
                 await self.add_test_method(method.test_name, method)  # type: ignore
-    
+
     async def cleanup(self):
         pass
 
@@ -261,6 +265,11 @@ class S2TestCase(unittest.TestCase):
         pass
 
     async def triggers_task(self):
+        """This is the triggers event loop. It iterates over each trigger in the triggers
+        list and performs them with the specified wait after each. It can also wait for events.
+        If an event and a wait time is provided then the wait time behaves as a timeout for the event wait.
+        Once there are no more triggers remaining the `_triggers_complete_event` will be set which will terminate the test loop.
+        """
         try:
             while True:
                 method, wait_time, event, args, kwargs = self.triggers.get_nowait()
@@ -269,7 +278,14 @@ class S2TestCase(unittest.TestCase):
 
                 if event is not None:
                     logger.info("Triggering task. Waiting until event set.")
-                    await event.wait()
+                    if wait_time is not None:
+                        try:
+                            await asyncio.wait_for(event.wait(), wait_time)
+                        except TimeoutError:
+                            logger.info("Event not triggered. Timed out.")
+                            continue
+                    else:
+                        await event.wait()
                     logger.info("Trigger complete.")
                 else:
                     logger.info("Triggering task. Waiting %d seconds.", wait_time)

@@ -61,6 +61,7 @@ class PEBCTestCase(NotControllableRMTestCase):
     config: PEBCRMTestConfig
 
     _power_constraints_received_event: asyncio.Event
+    _energy_constraints_received_event: asyncio.Event
 
     instruction_test_states: Dict[uuid.UUID, InstructionTestState] = {}
 
@@ -75,6 +76,7 @@ class PEBCTestCase(NotControllableRMTestCase):
         super().__init__(config, channel, controller, report, logger)
 
         self._power_constraints_received_event = asyncio.Event()
+        self._energy_constraints_received_event = asyncio.Event()
 
         self.message_handlers[PEBCEnergyConstraint] = self.handle_energy_constraints
         self.message_handlers[PEBCPowerConstraints] = self.handle_power_constraints
@@ -86,20 +88,15 @@ class PEBCTestCase(NotControllableRMTestCase):
         await super().generate_tests()
 
         await self.add_trigger_method(
-            None, wait_time=0, event=self._power_constraints_received_event
+            None, wait_time=None, event=self._power_constraints_received_event
         )
-        # await self.add_test_method(
-        #     "9.3.1. Update Power Constraints", self.validate_power_constraints_set
-        # )
-        # await self.add_test_method(
-        #     "9.3.3. Update Energy Constraints", self.validate_energy_constraints_set
-        # )
 
-        # await self.generate_set_limit_range_instruction_tests()
-
-        # await self.add_test_method(
-        #     "9.3.4. Revoke Energy Constraints", self.test_revoke_power_constraints
-        # )
+        if self.config.sends_energy_constraints:
+            await self.add_trigger_method(
+                None,
+                wait_time=self.config.energy_constraints_wait_timeout,
+                event=self._power_constraints_received_event,
+            )
 
     async def control_type_set_pebc_precondition(
         self, precondition_id: str | None = None
@@ -128,9 +125,12 @@ class PEBCTestCase(NotControllableRMTestCase):
             "Update PEBC Power Constraint", self.validate_power_constraints, message
         )
 
-        # First phase of testing is just letting the RM send readings.
-        await self.add_trigger_method(None, wait_time=10, event=None)
-        # Then send all send one curtailment instruction at a time and see how it reacts.
+        # First phase of testing is just letting the RM send readings. Energy constraints will be waited for first.
+        await self.add_trigger_method(
+            None, wait_time=self.config.instruction_trigger_wait_time, event=None
+        )
+
+        # Generate curtailment instruction triggers.
         await self.generate_set_limit_range_instruction_triggers()
 
         self._power_constraints_received_event.set()
@@ -142,6 +142,46 @@ class PEBCTestCase(NotControllableRMTestCase):
 
         await self.add_test_method(
             "Update PEBC Energy Constraint", self.validate_energy_constraints, message
+        )
+        self._energy_constraints_received_event.set()
+
+    async def handle_instruction_status_update(
+        self, message: InstructionStatusUpdate, channel: "S2Channel", send_okay
+    ):
+        await send_okay
+
+        await self.add_test_method(
+            "Validate Instruction Status Update",
+            self.validate_instruction_status_update,
+            message,
+        )
+
+    async def validate_instruction_status_update(
+        self, instruction_status_update: InstructionStatusUpdate
+    ):
+
+        self.assertIsNotNone(instruction_status_update)
+        self.assertEqual(type(instruction_status_update), InstructionStatusUpdate)
+
+        state = self.instruction_test_states.get(
+            instruction_status_update.instruction_id, None
+        )
+
+        if state is None:
+            raise AssertionError("Instruction not recognised. State doesn't exist.")
+
+        instruction = state.instruction
+
+        # Sanity Checks
+        self.assertIsNotNone(instruction)
+        self.assertEqual(type(instruction), PEBCInstruction)
+        self.assertEqual(instruction_status_update.instruction_id, instruction.id)
+
+        # Check that the status matches what we expect given the range we provided.
+        self.assertEqual(
+            instruction_status_update.status_type,
+            state.expected_status,
+            f"Instruction status {instruction_status_update.status_type} does not match expected {state.expected_status}",
         )
 
     async def validate_power_constraints(self, power_constraint: PEBCPowerConstraints):
@@ -190,6 +230,9 @@ class PEBCTestCase(NotControllableRMTestCase):
         duration: int,
         expected_instruction_status: InstructionStatus,
     ):
+        self.test_logger.info(
+            f"Sending instruction with expected instruction status {expected_instruction_status}"
+        )
 
         power_envelope = self.create_power_envelope(
             commodity_quantity=commodity_quantity,
@@ -210,45 +253,15 @@ class PEBCTestCase(NotControllableRMTestCase):
             expected_status=expected_instruction_status,
         )
 
-    async def handle_instruction_status_update(
-        self, message: InstructionStatusUpdate, channel: "S2Channel", send_okay
-    ):
-        await send_okay
-
-        await self.add_test_method(
-            "Validate Instruction Status Update",
-            self.validate_instruction_status_update,
-            message,
-        )
-
-    async def validate_instruction_status_update(
-        self, instruction_status_update: InstructionStatusUpdate
-    ):
-
-        self.assertIsNotNone(instruction_status_update)
-        self.assertEqual(type(instruction_status_update), InstructionStatusUpdate)
-
-        state = self.instruction_test_states.get(
-            instruction_status_update.instruction_id, None
-        )
-        if state is None:
-            raise AssertionError(
-                "No Instruction Test State. Was this instruction sent?"
+        # Wait the specified instruction processing time before proceeding.
+        if (
+            self.controller.resource_manager_details
+            and self.config.wait_instruction_processing_time
+        ):
+            wait_time = (
+                self.controller.resource_manager_details.instruction_processing_delay.to_timedelta().seconds
             )
-
-        instruction = state.instruction
-
-        self.assertIsNotNone(instruction)
-        self.assertEqual(type(instruction), PEBCInstruction)
-
-        self.assertEqual(instruction_status_update.instruction_id, instruction.id)
-
-        self.assertEqual(instruction_status_update.status_type, state.expected_status)
-
-        # TODO: Revoke instruction
-        # await self.controller.send_revoke_power_envelope_instruction(
-        #     self.channel,
-        # )
+            await asyncio.sleep(wait_time)
 
     async def generate_curtail_commodity_quantity_instruction_triggers(
         self,
@@ -293,7 +306,7 @@ class PEBCTestCase(NotControllableRMTestCase):
                 upper_limit=upper,
                 duration=duration,
                 expected_instruction_status=InstructionStatus.SUCCEEDED,
-                wait_time=10,
+                wait_time=self.config.instruction_trigger_wait_time,
             )
 
             await self.add_trigger_method(
@@ -303,7 +316,7 @@ class PEBCTestCase(NotControllableRMTestCase):
                 upper_limit=upper_limit.start_of_range + 1,
                 duration=duration,
                 expected_instruction_status=InstructionStatus.REJECTED,
-                wait_time=10,
+                wait_time=self.config.instruction_trigger_wait_time,
             )
 
     async def generate_set_limit_range_instruction_triggers(self):
