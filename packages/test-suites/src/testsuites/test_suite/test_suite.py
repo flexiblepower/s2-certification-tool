@@ -69,11 +69,11 @@ class S2TestCase(unittest.TestCase):
     # A list tuples containing a method and a int duration (seconds). Each trigger is called after the timeout of the previous one is complete.
     triggers: asyncio.Queue[
         Tuple[
-            Optional[Callable[..., Awaitable]], # Trigger function
-            Optional[int], # Wait time. If event provided then timeout
-            Optional[asyncio.Event], # Trigger event
-            Tuple, # Args
-            Dict, # Kwargs
+            Optional[Callable[..., Awaitable]],  # Trigger function
+            Optional[int],  # Wait time. If event provided then timeout
+            Optional[asyncio.Event],  # Trigger event
+            Tuple,  # Args
+            Dict,  # Kwargs
         ]
     ]
 
@@ -287,10 +287,13 @@ class S2TestCase(unittest.TestCase):
                     else:
                         await event.wait()
                     logger.info("Trigger complete.")
-                else:
+                elif wait_time is not None:
                     logger.info("Triggering task. Waiting %d seconds.", wait_time)
                     await asyncio.sleep(wait_time)
                     logger.info("Trigger complete.")
+                else:
+                    raise ValueError("Either event or wait time must be provided.")
+
         except asyncio.QueueEmpty:
             pass
         finally:

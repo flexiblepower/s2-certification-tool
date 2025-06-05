@@ -117,20 +117,20 @@ class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
 
         await self.add_test_method(
             "9.3.1. Update Power Constraints",
-            self.test_send_pebc_power_constraint,
+            self.send_power_constraint,
             self.power_constraint,
         )
 
         off_energy_constraint = self.create_energy_constraint(0, 0)
         await self.add_test_method(
             "Update Energy Constraint",
-            self.test_send_energy_constraint,
+            self.send_energy_constraint,
             off_energy_constraint,
         )
 
         await self.add_test_method(
             "9.2.5. Update Power Forecast",
-            self.test_update_power_forecast,
+            self.update_power_forecast,
             self.create_power_forecast(
                 [
                     [
@@ -150,7 +150,7 @@ class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
         # Send Measurement when not charging
         await self.add_test_method(
             "9.2.4. Communicate Power Measurement",
-            self.test_update_power_measurement,
+            self.update_power_measurement,
             self.create_power_measurement([(CommodityQuantity.ELECTRIC_POWER_L1, 0)]),
             10,
         )
@@ -160,13 +160,13 @@ class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
         charging_energy_constraint = self.create_energy_constraint(2000, 1000)
         await self.add_test_method(
             "Update Energy Constraint",
-            self.test_send_energy_constraint,
+            self.send_energy_constraint,
             charging_energy_constraint,
         )
 
         await self.add_test_method(
             "9.2.5. Update Power Forecast",
-            self.test_update_power_forecast,
+            self.update_power_forecast,
             self.create_power_forecast(
                 [
                     [
@@ -185,7 +185,7 @@ class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
 
         await self.add_test_method(
             "9.2.4. Communicate Power Measurement",
-            self.test_update_power_measurement,
+            self.update_power_measurement,
             self.create_power_measurement(
                 [(CommodityQuantity.ELECTRIC_POWER_L1, 2000)]
             ),
@@ -200,5 +200,5 @@ class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
 
         await self.add_test_method(
             "9.3.2. Revoke Power Constraints",
-            self.test_revoke_power_constraint,
+            self.revoke_power_constraint,
         )

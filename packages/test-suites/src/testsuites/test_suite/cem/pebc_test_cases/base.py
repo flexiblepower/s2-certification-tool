@@ -30,7 +30,10 @@ from s2python.common import (
     Transition,
     Duration,
     RevokeObject,
+    ReceptionStatusValues,
+    ReceptionStatus,
 )
+from s2python.message import S2Message
 from s2python.pebc import (
     PEBCPowerConstraints,
     PEBCEnergyConstraint,
@@ -82,6 +85,15 @@ class PEBCBaseScenarioTestCase(S2TestCase):
         )
         self.test_logger.success("Precondition Activate Control Type Met")
 
+    async def base_message_send_validate(
+        self, message: S2Message, reception_status: ReceptionStatus
+    ):
+        self.assertIsNotNone(message)
+        self.assertIsNotNone(reception_status)
+        self.assertEqual(reception_status.status, ReceptionStatusValues.OK)
+        self.assertNotEqual(type(message), ReceptionStatus)
+        self.assertEqual(message.message_id, reception_status.subject_message_id)  # type: ignore
+
     def update_power_constraints_precondition(self, precondition_id: str | None = None):
         """Tests the power constraints have been set as precondition.
 
@@ -114,43 +126,72 @@ class PEBCBaseScenarioTestCase(S2TestCase):
             f"{precondition_id + ' ' if precondition_id is not None else '' }Task Precondition 'Update Energy Constraint' is complete."
         )
 
-    async def test_send_pebc_power_constraint(
-        self, power_constraints: PEBCPowerConstraints
-    ):
-        await self.controller.send_pebc_power_constraint(
+    async def send_power_constraint(self, power_constraints: PEBCPowerConstraints):
+        reception_status = await self.controller.send_pebc_power_constraint(
             self.channel, power_constraints
         )
+
+        test_name = "9.3.1. Update Power Constraints"
+        if not self._pebc_power_constraints_sent_event.is_set():
+            test_name += " (Initial)"
         self._pebc_power_constraints_sent_event.set()
 
-    async def test_revoke_power_constraint(self):
+        await self.add_test_method(
+            test_name,
+            self.base_message_send_validate,
+            power_constraints,
+            reception_status,
+        )
+
+    async def revoke_power_constraint(self):
         await self.controller.revoke_pebc_power_constraint(self.channel)
         self._pebc_power_constraints_sent_event.clear()
 
-    async def test_send_energy_constraint(
-        self, energy_constraint: PEBCEnergyConstraint
-    ):
-        await self.controller.send_pebc_energy_constraint(
+    async def send_energy_constraint(self, energy_constraint: PEBCEnergyConstraint):
+        reception_status = await self.controller.send_pebc_energy_constraint(
             self.channel, energy_constraint
         )
+
+        test_name = "Update Energy Constraints"
+        if not self._pebc_energy_constraints_sent_event.is_set():
+            test_name += " (Initial)"
+
         self._pebc_energy_constraints_sent_event.set()
 
-    async def test_revoke_energy_constraint(self):
+        await self.add_test_method(
+            test_name,
+            self.base_message_send_validate,
+            energy_constraint,
+            reception_status,
+        )
+
+    async def revoke_energy_constraint(self):
         await self.controller.revoke_pebc_energy_constraint(self.channel)
         self._pebc_energy_constraints_sent_event.clear()
 
-    async def test_update_power_measurement(
-        self, power_measurement: PowerMeasurement, wait_time=0
-    ):
-        await self.controller.send_power_measurement(self.channel, power_measurement)
+    async def update_power_measurement(self, power_measurement: PowerMeasurement):
+        reception_status = await self.controller.send_power_measurement(
+            self.channel, power_measurement
+        )
 
-        await asyncio.sleep(wait_time)
+        await self.add_test_method(
+            "9.2.4. Communicate Power Measurement",
+            self.base_message_send_validate,
+            power_measurement,
+            reception_status,
+        )
 
-    async def test_update_power_forecast(
-        self, power_forecast: PowerForecast, wait_time=0
-    ):
-        await self.controller.send_power_forecast(self.channel, power_forecast)
+    async def update_power_forecast(self, power_forecast: PowerForecast):
+        reception_status = await self.controller.send_power_forecast(
+            self.channel, power_forecast
+        )
 
-        await asyncio.sleep(wait_time)
+        await self.add_test_method(
+            "9.2.5. Update Power Forecast",
+            self.base_message_send_validate,
+            power_forecast,
+            reception_status,
+        )
 
     async def wait_for_instruction(self, wait_time=10):
         try:
