@@ -1,6 +1,9 @@
+import abc
 import asyncio
 from dataclasses import dataclass
+from datetime import timedelta
 import logging
+from typing import Awaitable
 import uuid
 from connectivity.s2_channel import S2Channel
 
@@ -32,6 +35,7 @@ from s2python.common import (
     RevokeObject,
     ReceptionStatusValues,
     ReceptionStatus,
+    RevokableObjects,
 )
 from s2python.message import S2Message
 from s2python.pebc import (
@@ -62,6 +66,8 @@ class PEBCBaseScenarioTestCase(S2TestCase):
     controller: PEBCCEMController
     config: PEBCCEMTestConfig
 
+    _received_instruction_event: asyncio.Event
+
     def __init__(
         self,
         config: PEBCCEMTestConfig,
@@ -74,6 +80,10 @@ class PEBCBaseScenarioTestCase(S2TestCase):
 
         self._pebc_power_constraints_sent_event = asyncio.Event()
         self._pebc_energy_constraints_sent_event = asyncio.Event()
+        self._received_instruction_event = asyncio.Event()
+
+        self.message_handlers[RevokeObject] = self.handle_revoke
+        self.message_handlers[PEBCInstruction] = self.handle_instruction
 
     async def setup(self):
         await super().setup()
@@ -93,6 +103,40 @@ class PEBCBaseScenarioTestCase(S2TestCase):
         self.assertEqual(reception_status.status, ReceptionStatusValues.OK)
         self.assertNotEqual(type(message), ReceptionStatus)
         self.assertEqual(message.message_id, reception_status.subject_message_id)  # type: ignore
+
+    def create_energy_constraint(
+        self,
+        upper_average_power,
+        lower_average_power,
+        commodity_quantity=CommodityQuantity.ELECTRIC_POWER_L1,
+    ):
+        return PEBCEnergyConstraint(
+            id=uuid.uuid4(),
+            message_id=uuid.uuid4(),
+            commodity_quantity=commodity_quantity,
+            upper_average_power=upper_average_power,
+            lower_average_power=lower_average_power,
+            valid_from=current_timezone_time(),
+            valid_until=current_timezone_time() + timedelta(hours=1),
+        )
+
+    def create_power_measurement(
+        self, power_values: list[tuple[CommodityQuantity, float]]
+    ) -> PowerMeasurement:
+        measurements = []
+        for commodity_quantity, value in power_values:
+            measurements.append(
+                PowerValue(
+                    commodity_quantity=commodity_quantity,
+                    value=value,
+                )
+            )
+
+        return PowerMeasurement(
+            message_id=uuid.uuid4(),
+            measurement_timestamp=current_timezone_time(),
+            values=measurements,
+        )
 
     def update_power_constraints_precondition(self, precondition_id: str | None = None):
         """Tests the power constraints have been set as precondition.
@@ -169,7 +213,7 @@ class PEBCBaseScenarioTestCase(S2TestCase):
         await self.controller.revoke_pebc_energy_constraint(self.channel)
         self._pebc_energy_constraints_sent_event.clear()
 
-    async def update_power_measurement(self, power_measurement: PowerMeasurement):
+    async def send_power_measurement(self, power_measurement: PowerMeasurement):
         reception_status = await self.controller.send_power_measurement(
             self.channel, power_measurement
         )
@@ -181,7 +225,7 @@ class PEBCBaseScenarioTestCase(S2TestCase):
             reception_status,
         )
 
-    async def update_power_forecast(self, power_forecast: PowerForecast):
+    async def send_power_forecast(self, power_forecast: PowerForecast):
         reception_status = await self.controller.send_power_forecast(
             self.channel, power_forecast
         )
@@ -234,3 +278,33 @@ class PEBCBaseScenarioTestCase(S2TestCase):
             elements=elements,
             start_time=current_timezone_time(),
         )
+
+    @abc.abstractmethod
+    async def validate_instruction(self, instruction: PEBCInstruction):
+        pass
+
+    async def handle_instruction(
+        self, instruction: PEBCInstruction, channel: S2Channel, send_okay: Awaitable
+    ):
+
+        self.test_logger.info(instruction)
+
+        await self.add_test_method(
+            "Receive Instruction", self.validate_instruction, instruction
+        )
+
+        await send_okay
+        self._received_instruction_event.set()
+
+    async def handle_revoke(
+        self, revoke_message: RevokeObject, channel: S2Channel, send_okay: Awaitable
+    ):
+        await self.handle_with_original_handler(revoke_message, channel, send_okay)
+
+        await self.add_test_method(
+            "Revoke PEBC Instruction.", self.validate_receive_revoke_message
+        )
+
+    async def validate_receive_revoke_message(self, revoke_message):
+        # The only thing that the CEM can revoke in an instruction.
+        self.assertIn(revoke_message, [RevokableObjects.PEBC_Instruction])

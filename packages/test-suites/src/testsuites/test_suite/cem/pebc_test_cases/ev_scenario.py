@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import timedelta
 from connectivity.config import PEBCCEMTestConfig
@@ -41,6 +42,8 @@ from testsuites.util import current_timezone_time
 class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
     name = "Electric Vehicle Curtail Charging Scenario Test Case"
 
+    _received_instruction_event: asyncio.Event
+
     def __init__(
         self,
         config: PEBCCEMTestConfig,
@@ -52,6 +55,8 @@ class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
         super().__init__(config, channel, controller, report, logger)
 
         self.create_power_constraint()
+
+        self._received_instruction_event = asyncio.Event()
 
     def create_power_constraint(self):
 
@@ -77,41 +82,85 @@ class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
             valid_until=current_timezone_time() + timedelta(hours=1),
         )
 
-    def create_energy_constraint(
-        self,
-        upper_average_power,
-        lower_average_power,
-        commodity_quantity=CommodityQuantity.ELECTRIC_POWER_L1,
-    ):
-        return PEBCEnergyConstraint(
-            id=uuid.uuid4(),
-            message_id=uuid.uuid4(),
-            commodity_quantity=commodity_quantity,
-            upper_average_power=upper_average_power,
-            lower_average_power=lower_average_power,
-            valid_from=current_timezone_time(),
-            valid_until=current_timezone_time() + timedelta(hours=1),
-        )
-
-    def create_power_measurement(
-        self, power_values: list[tuple[CommodityQuantity, float]]
-    ) -> PowerMeasurement:
-        measurements = []
-        for commodity_quantity, value in power_values:
-            measurements.append(
-                PowerValue(
-                    commodity_quantity=commodity_quantity,
-                    value=value,
-                )
-            )
-
-        return PowerMeasurement(
-            message_id=uuid.uuid4(),
-            measurement_timestamp=current_timezone_time(),
-            values=measurements,
-        )
-
     async def generate_tests(self):
+        await super().generate_tests()
+
+        await self.add_trigger_method(self.send_power_constraint, self.power_constraint)
+
+        off_energy_constraint = self.create_energy_constraint(0, 0)
+        await self.add_trigger_method(
+            self.send_energy_constraint, off_energy_constraint
+        )
+
+        await self.add_trigger_method(
+            self.send_power_forecast,
+            self.create_power_forecast(
+                [
+                    [
+                        PowerForecastData(
+                            CommodityQuantity.ELECTRIC_POWER_L1, 0, variance=0
+                        )
+                    ],
+                    [
+                        PowerForecastData(
+                            CommodityQuantity.ELECTRIC_POWER_L1, 0, variance=0
+                        )
+                    ],
+                ]
+            ),
+        )
+
+        await self.add_trigger_method(
+            self.send_power_measurement,
+            self.create_power_measurement([(CommodityQuantity.ELECTRIC_POWER_L1, 0)]),
+        )
+
+        await self.add_trigger_method(None, wait_time=10)
+
+        # Car plugged in. Starting to charge.
+        charging_energy_constraint = self.create_energy_constraint(2000, 1000)
+        await self.add_trigger_method(
+            self.send_energy_constraint, charging_energy_constraint
+        )
+
+        await self.add_trigger_method(
+            self.send_power_forecast,
+            self.create_power_forecast(
+                [
+                    [
+                        PowerForecastData(
+                            CommodityQuantity.ELECTRIC_POWER_L1, 2000, variance=0
+                        )
+                    ],
+                    [
+                        PowerForecastData(
+                            CommodityQuantity.ELECTRIC_POWER_L1, 2000, variance=0
+                        )
+                    ],
+                ]
+            ),
+        )
+
+        await self.add_trigger_method(
+            self.send_power_measurement,
+            self.create_power_measurement(
+                [(CommodityQuantity.ELECTRIC_POWER_L1, 2000)]
+            ),
+        )
+
+        await self.add_trigger_method(
+            None,
+            event=self._received_instruction_event,
+            wait_time=self.config.instruction_wait_timeout,
+        )
+
+        # Wait 10 seconds after receiving instruction
+        await self.add_trigger_method(None, wait_time=10)
+
+        await self.add_trigger_method(self.revoke_power_constraint)
+        await self.add_trigger_method(self.revoke_energy_constraint)
+
+    async def fold(self):
         await super().generate_tests()
         self.test_logger.info("Starting in a not charging state.")
 
@@ -130,7 +179,7 @@ class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
 
         await self.add_test_method(
             "9.2.5. Update Power Forecast",
-            self.update_power_forecast,
+            self.send_power_forecast,
             self.create_power_forecast(
                 [
                     [
@@ -150,7 +199,7 @@ class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
         # Send Measurement when not charging
         await self.add_test_method(
             "9.2.4. Communicate Power Measurement",
-            self.update_power_measurement,
+            self.send_power_measurement,
             self.create_power_measurement([(CommodityQuantity.ELECTRIC_POWER_L1, 0)]),
             10,
         )
@@ -166,7 +215,7 @@ class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
 
         await self.add_test_method(
             "9.2.5. Update Power Forecast",
-            self.update_power_forecast,
+            self.send_power_forecast,
             self.create_power_forecast(
                 [
                     [
@@ -185,7 +234,7 @@ class PEBCElectricVehicleCurtailScenarioTestCase(PEBCBaseScenarioTestCase):
 
         await self.add_test_method(
             "9.2.4. Communicate Power Measurement",
-            self.update_power_measurement,
+            self.send_power_measurement,
             self.create_power_measurement(
                 [(CommodityQuantity.ELECTRIC_POWER_L1, 2000)]
             ),

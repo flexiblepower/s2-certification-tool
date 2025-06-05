@@ -291,7 +291,7 @@ class S2TestCase(unittest.TestCase):
                     logger.info("Triggering task. Waiting %d seconds.", wait_time)
                     await asyncio.sleep(wait_time)
                     logger.info("Trigger complete.")
-                else:
+                elif method is None:
                     raise ValueError("Either event or wait time must be provided.")
 
         except asyncio.QueueEmpty:

@@ -43,8 +43,6 @@ from testsuites.util import current_timezone_time
 class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
     name = "Photovoltaic Panel Scenario Test Case"
 
-    _received_instruction_event: asyncio.Event
-
     def __init__(
         self,
         config: PEBCCEMTestConfig,
@@ -57,10 +55,6 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
 
         self.create_power_constraint()
         self.create_energy_constraint()
-
-        self._received_instruction_event = asyncio.Event()
-
-        self.message_handlers[PEBCInstruction] = self.handle_instruction
 
     def create_power_constraint(self):
 
@@ -90,24 +84,6 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
         # PV doesn't have energy constraint
         pass
 
-    def create_power_measurement(
-        self, power_values: list[tuple[CommodityQuantity, float]]
-    ) -> PowerMeasurement:
-        measurements = []
-        for commodity_quantity, value in power_values:
-            measurements.append(
-                PowerValue(
-                    commodity_quantity=commodity_quantity,
-                    value=value,
-                )
-            )
-
-        return PowerMeasurement(
-            message_id=uuid.uuid4(),
-            measurement_timestamp=current_timezone_time(),
-            values=measurements,
-        )
-
     async def generate_tests(self):
         await super().generate_tests()
 
@@ -116,7 +92,7 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
         )
 
         await self.add_trigger_method(
-            self.update_power_forecast,
+            self.send_power_forecast,
             self.create_power_forecast(
                 [
                     [PowerForecastData(CommodityQuantity.ELECTRIC_POWER_L1, 0)],
@@ -125,7 +101,7 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
             wait_time=0,
         )
         await self.add_trigger_method(
-            self.update_power_measurement,
+            self.send_power_measurement,
             self.create_power_measurement(
                 [(CommodityQuantity.ELECTRIC_POWER_L1, -2000)]
             ),
@@ -138,27 +114,11 @@ class PEBCPVPanelScenarioTestCase(PEBCBaseScenarioTestCase):
             wait_time=self.config.instruction_wait_timeout,
         )
 
-    async def handle_instruction(
-        self, instruction: PEBCInstruction, channel: S2Channel, send_okay: Awaitable
-    ):
+        # Wait 10 seconds after receiving instruction
+        await self.add_trigger_method(None, wait_time=10)
 
-        self.test_logger.info(instruction)
-
-        await send_okay
-        self._received_instruction_event.set()
-
-    async def handle_revoke(
-        self, revoke_message: RevokeObject, channel: S2Channel, send_okay: Awaitable
-    ):
-        await self.handle_with_original_handler(revoke_message, channel, send_okay)
-
-        await self.add_test_method(
-            "Revoke PEBC Instruction.", self.validate_receive_revoke_message
-        )
-
-    async def validate_receive_revoke_message(self, revoke_message):
-        # The only thing that the CEM can revoke in an instruction.
-        self.assertIn(revoke_message, [RevokableObjects.PEBC_Instruction])
+        await self.add_trigger_method(self.revoke_power_constraint)
+        await self.add_trigger_method(self.revoke_energy_constraint)
 
     # async def generate_tests(self):
     #     await super().generate_tests()

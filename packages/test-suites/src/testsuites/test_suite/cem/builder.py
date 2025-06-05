@@ -26,8 +26,7 @@ def build_cem_test_suite(
         .with_test_case(FRBCElectricVehicleScenarioTestCase)
         # .with_test_case(FRBCBatteryScenarioTestCase)
         # ! PEBC Test Case
-        .with_test_case(PEBCPVPanelScenarioTestCase)
-        # .with_test_case(
-        #     PEBCElectricVehicleCurtailScenarioTestCase
-        # )
+        .with_test_case(PEBCPVPanelScenarioTestCase).with_test_case(
+            PEBCElectricVehicleCurtailScenarioTestCase
+        )
     )
