@@ -42,7 +42,7 @@ from testsuites.controllers.cem import FRBCCEMController
 from testsuites.test_logger import TestLogger
 from testsuites.test_suite.test_suite import NotApplicableTestException, S2TestCase
 from testsuites.util import current_timezone_time
-from .base import FRBCTestCase, FRBCBaseScenarioTestCase
+from .base import FRBCCEMTestCase, FRBCCEMTestCase
 
 CHARGE_EFFICIENCY: float = 1.0
 DISCHARGE_EFFICIENCY: float = 1.0
@@ -53,7 +53,7 @@ INITIAL_FILL_LEVEL: float = 0.5
 SIMULATION_DURATION = 60
 
 
-class FRBCBatteryScenarioTestCase(FRBCBaseScenarioTestCase):
+class FRBCBatteryScenarioTestCase(FRBCCEMTestCase):
     name = "Battery Scenario Test Case"
 
     def __init__(
@@ -322,12 +322,12 @@ class FRBCBatteryScenarioTestCase(FRBCBaseScenarioTestCase):
         # Putting the tests here allows me to enforce the ordering.
         await self.add_test_method(
             "9.6.1 Update System Description (initial)",
-            self.test_send_frbc_system_description,
+            self.send_frbc_system_description,
             self.system_description,
         )
         await self.add_test_method(
             "9.6.3. Update Leakage Behaviour (Initial)",
-            self.test_update_leakage_behaviour,
+            self.send_leakage_behaviour,
             self.leakage_behavior,
         )
 
@@ -344,17 +344,17 @@ class FRBCBatteryScenarioTestCase(FRBCBaseScenarioTestCase):
         )
         await self.add_test_method(
             "Update Actuator Status (Idle)",
-            self.test_update_actuator_status,
+            self.send_actuator_status,
             actuator_status,
         )
         await self.add_test_method(
             "Update Storage Status (Initial)",
-            self.test_update_storage_status,
+            self.send_storage_status,
             storage_status,
         )
         await self.add_test_method(
             "Update Usage Forecast (Initial)",
-            self.test_update_usage_forecast,
+            self.send_usage_forecast,
             self.forecast(),
         )
         await self.add_test_method("Simulation", self.test_simulate)

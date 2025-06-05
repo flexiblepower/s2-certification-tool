@@ -11,6 +11,7 @@ from connectivity.config import PEBCCEMTestConfig
 from testsuites.certificate.certificate import ComplianceReport
 from testsuites.controllers.cem.pebc_controller import PEBCCEMController
 from testsuites.test_logger import TestLogger
+from testsuites.test_suite.cem.not_controllable import NotControllableCEMTestCase
 from testsuites.test_suite.test_suite import NotApplicableTestException, S2TestCase
 from testsuites.util import current_timezone_time
 
@@ -58,7 +59,7 @@ class PowerForecastData:
     variance: float = 0.5
 
 
-class PEBCBaseScenarioTestCase(S2TestCase):
+class PEBCBaseScenarioTestCase(NotControllableCEMTestCase):
     control_type = ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL
 
     TIMEOUT = 5
@@ -94,15 +95,6 @@ class PEBCBaseScenarioTestCase(S2TestCase):
             "Precondition Activate Control Type not met",
         )
         self.test_logger.success("Precondition Activate Control Type Met")
-
-    async def base_message_send_validate(
-        self, message: S2Message, reception_status: ReceptionStatus
-    ):
-        self.assertIsNotNone(message)
-        self.assertIsNotNone(reception_status)
-        self.assertEqual(reception_status.status, ReceptionStatusValues.OK)
-        self.assertNotEqual(type(message), ReceptionStatus)
-        self.assertEqual(message.message_id, reception_status.subject_message_id)  # type: ignore
 
     def create_energy_constraint(
         self,
@@ -307,4 +299,8 @@ class PEBCBaseScenarioTestCase(S2TestCase):
 
     async def validate_receive_revoke_message(self, revoke_message):
         # The only thing that the CEM can revoke in an instruction.
-        self.assertIn(revoke_message, [RevokableObjects.PEBC_Instruction])
+        self.assertIn(
+            revoke_message,
+            [RevokableObjects.PEBC_Instruction],
+            "Invalid revoke message received.",
+        )

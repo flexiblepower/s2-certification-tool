@@ -16,7 +16,11 @@ from s2python.common import (
     Transition,
     Duration,
     RevokeObject,
+    ReceptionStatus,
+    ReceptionStatusValues,
 )
+from s2python.message import S2Message
+
 
 from testsuites.certificate.certificate import ComplianceReport
 from testsuites.controllers.cem.not_controllable_controller import (
@@ -74,54 +78,75 @@ class NotControllableCEMTestCase(S2TestCase):
 
         return self.controller.resource_manager_details.provides_power_measurement_types
 
-    @S2TestCase.test(name="9.2.4. Communicate Power Measurement")
-    async def test_communicate_power_measurement(self):
-        self.update_resource_manager_details_precondition("9.2.4.2.")
+    async def base_message_send_validate(
+        self, message: S2Message, reception_status: ReceptionStatus
+    ):
+        self.assertIsNotNone(message)
+        self.assertIsNotNone(reception_status)
+        self.assertEqual(reception_status.status, ReceptionStatusValues.OK)
+        self.assertNotEqual(type(message), ReceptionStatus)
+        self.assertEqual(message.message_id, reception_status.subject_message_id)  # type: ignore
 
-        commodity_quantities = self.get_system_description_commodity_quantities()
-
-        power_values = [
-            PowerValue(commodity_quantity=commodity_quantity, value=100)
-            for commodity_quantity in commodity_quantities
-        ]
-
-        power_measurement = PowerMeasurement(
-            measurement_timestamp=current_timezone_time(),
-            message_id=uuid.uuid4(),
-            values=power_values,
+    async def send_power_measurement(self, power_measurement: PowerMeasurement):
+        reception_status = await self.controller.send_power_measurement(
+            self.channel, power_measurement
+        )
+        await self.add_test_method(
+            "Update power_measurement forecast",
+            self.base_message_send_validate,
+            power_measurement,
+            reception_status,
         )
 
-        await self.controller.send_power_measurement(self.channel, power_measurement)
+    # TODO: Rethink
+    # @S2TestCase.test(name="9.2.4. Communicate Power Measurement")
+    # async def test_communicate_power_measurement(self):
+    #     self.update_resource_manager_details_precondition("9.2.4.2.")
 
-    @S2TestCase.test(name="9.2.5. Update Power Forecast")
-    async def test_update_power_forecast(self):
-        self.update_resource_manager_details_precondition("9.2.4.2.")
+    #     commodity_quantities = self.get_system_description_commodity_quantities()
 
-        commodity_quantities = self.get_system_description_commodity_quantities()
+    #     power_values = [
+    #         PowerValue(commodity_quantity=commodity_quantity, value=100)
+    #         for commodity_quantity in commodity_quantities
+    #     ]
 
-        elements = [
-            PowerForecastElement(
-                duration=Duration(3600.0),
-                power_values=[
-                    PowerForecastValue(
-                        commodity_quantity=q,
-                        value_expected=100,
-                        value_lower_limit=None,
-                        value_upper_limit=None,
-                        value_lower_68PPR=None,
-                        value_upper_68PPR=None,
-                        value_lower_95PPR=None,
-                        value_upper_95PPR=None,
-                    )
-                    for q in commodity_quantities
-                ],
-            )
-        ]
+    #     power_measurement = PowerMeasurement(
+    #         measurement_timestamp=current_timezone_time(),
+    #         message_id=uuid.uuid4(),
+    #         values=power_values,
+    #     )
 
-        power_forecast = PowerForecast(
-            message_id=uuid.uuid4(),
-            start_time=current_timezone_time(),
-            elements=elements,
-        )
+    #     await self.send_power_measurement(power_measurement)
 
-        await self.controller.send_power_forecast(self.channel, power_forecast)
+    # @S2TestCase.test(name="9.2.5. Update Power Forecast")
+    # async def test_update_power_forecast(self):
+    #     self.update_resource_manager_details_precondition("9.2.4.2.")
+
+    #     commodity_quantities = self.get_system_description_commodity_quantities()
+
+    #     elements = [
+    #         PowerForecastElement(
+    #             duration=Duration(3600.0),
+    #             power_values=[
+    #                 PowerForecastValue(
+    #                     commodity_quantity=q,
+    #                     value_expected=100,
+    #                     value_lower_limit=None,
+    #                     value_upper_limit=None,
+    #                     value_lower_68PPR=None,
+    #                     value_upper_68PPR=None,
+    #                     value_lower_95PPR=None,
+    #                     value_upper_95PPR=None,
+    #                 )
+    #                 for q in commodity_quantities
+    #             ],
+    #         )
+    #     ]
+
+    #     power_forecast = PowerForecast(
+    #         message_id=uuid.uuid4(),
+    #         start_time=current_timezone_time(),
+    #         elements=elements,
+    #     )
+
+    #     await self.controller.send_power_forecast(self.channel, power_forecast)

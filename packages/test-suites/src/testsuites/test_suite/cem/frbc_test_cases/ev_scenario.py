@@ -37,13 +37,14 @@ from s2python.common import (
 
 from testsuites.certificate.certificate import ComplianceReport
 from testsuites.controllers.cem import FRBCCEMController
+from testsuites.controllers.cem.frbc_controller import ActuatorInformation
 from testsuites.test_logger import TestLogger
 from testsuites.test_suite.test_suite import NotApplicableTestException, S2TestCase
 from testsuites.util import current_timezone_time
-from .base import FRBCTestCase, FRBCBaseScenarioTestCase
+from .base import FRBCCEMTestCase, FRBCCEMTestCase
 
 
-class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
+class FRBCElectricVehicleScenarioTestCase(FRBCCEMTestCase):
     name = "Electric Vehicle Scenario Test Case"
 
     def __init__(
@@ -58,136 +59,236 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
 
         self.create_ev_example_frbc_system_description()
 
-        self.leakage_behavior = FRBCLeakageBehaviour(
-            message_id=uuid.uuid4(),
-            valid_from=datetime.datetime.now(tz=datetime.timezone.utc),
-            elements=[
-                FRBCLeakageBehaviourElement(
-                    fill_level_range=NumberRange(start_of_range=0, end_of_range=0),
-                    leakage_rate=0,
-                )
-            ],
+        self.controller.set_leakage_behaviour(
+            FRBCLeakageBehaviour(
+                message_id=uuid.uuid4(),
+                valid_from=datetime.datetime.now(tz=datetime.timezone.utc),
+                elements=[
+                    FRBCLeakageBehaviourElement(
+                        fill_level_range=NumberRange(start_of_range=0, end_of_range=0),
+                        leakage_rate=0,
+                    )
+                ],
+            )
         )
 
     def create_ev_example_frbc_system_description(self):
         self.commodity = Commodity.ELECTRICITY
         self.commodity_quantity = CommodityQuantity.ELECTRIC_POWER_L1
 
-        self.storage_description = FRBCStorageDescription(
-            diagnostic_label="Battery SoC",
-            fill_level_label="EV Battery SoC",
-            provides_leakage_behaviour=False,
-            provides_fill_level_target_profile=True,
-            provides_usage_forecast=False,
-            fill_level_range=NumberRange(start_of_range=0, end_of_range=100),
+        self.controller.set_storage_description(
+            FRBCStorageDescription(
+                diagnostic_label="Battery SoC",
+                fill_level_label="EV Battery SoC",
+                provides_leakage_behaviour=False,
+                provides_fill_level_target_profile=True,
+                provides_usage_forecast=False,
+                fill_level_range=NumberRange(start_of_range=0, end_of_range=100),
+            )
         )
 
-        self.off_operation_mode = FRBCOperationMode(
-            id=uuid.uuid4(),
-            elements=[
-                FRBCOperationModeElement(
-                    fill_level_range=NumberRange(
-                        start_of_range=0.0, end_of_range=100.0
-                    ),
-                    fill_rate=NumberRange(start_of_range=0.0, end_of_range=0.0),
-                    power_ranges=[
-                        PowerRange(
-                            start_of_range=0.0,
-                            end_of_range=0.0,
-                            commodity_quantity=self.commodity_quantity,
-                        )
-                    ],
-                )
-            ],
-            diagnostic_label="Off",
-            abnormal_condition_only=False,
-        )
-
-        self.charging_operation_mode = FRBCOperationMode(
-            id=uuid.uuid4(),
-            elements=[
-                FRBCOperationModeElement(
-                    fill_level_range=NumberRange(
-                        start_of_range=0.0, end_of_range=100.0
-                    ),
-                    fill_rate=NumberRange(start_of_range=0.00065, end_of_range=0.0051),
-                    power_ranges=[
-                        PowerRange(
-                            start_of_range=1400,
-                            end_of_range=11000,
-                            commodity_quantity=self.commodity_quantity,
-                        )
-                    ],
-                )
-            ],
-            diagnostic_label="Charging",
-            abnormal_condition_only=False,
-        )
-
-        self.actuator = FRBCActuatorDescription(
-            id=uuid.uuid4(),
-            diagnostic_label="",
-            operation_modes=[self.off_operation_mode, self.charging_operation_mode],
-            transitions=[
-                Transition(
-                    **{
-                        "id": uuid.uuid4(),
-                        "from": self.off_operation_mode.id,
-                        "to": self.charging_operation_mode.id,
-                        "start_timers": [],
-                        "blocking_timers": [],
-                        "transition_duration": Duration(3000),
-                        "abnormal_condition_only": False,
-                    }
-                ),
-                Transition(
-                    **{
-                        "id": uuid.uuid4(),
-                        "from": self.charging_operation_mode.id,
-                        "to": self.off_operation_mode.id,
-                        "start_timers": [],
-                        "blocking_timers": [],
-                        "transition_duration": Duration(3000),
-                        "abnormal_condition_only": False,
-                    }
-                ),
-            ],
-            timers=[],
+        actuator = ActuatorInformation(
             supported_commodities=[self.commodity],
         )
+        self.actuator = actuator
 
-        self.system_description = FRBCSystemDescription(
-            message_id=uuid.uuid4(),
-            valid_from=current_timezone_time(),
-            actuators=[self.actuator],
-            storage=self.storage_description,
+        off_operation_mode = actuator.add_operation_mode(
+            FRBCOperationMode(
+                id=uuid.uuid4(),
+                elements=[
+                    FRBCOperationModeElement(
+                        fill_level_range=NumberRange(
+                            start_of_range=0.0, end_of_range=100.0
+                        ),
+                        fill_rate=NumberRange(start_of_range=0.0, end_of_range=0.0),
+                        power_ranges=[
+                            PowerRange(
+                                start_of_range=0.0,
+                                end_of_range=0.0,
+                                commodity_quantity=self.commodity_quantity,
+                            )
+                        ],
+                    )
+                ],
+                diagnostic_label="Off",
+                abnormal_condition_only=False,
+            ),
+            name="off",
+        )
+
+        charging_operation_mode = actuator.add_operation_mode(
+            FRBCOperationMode(
+                id=uuid.uuid4(),
+                elements=[
+                    FRBCOperationModeElement(
+                        fill_level_range=NumberRange(
+                            start_of_range=0.0, end_of_range=100.0
+                        ),
+                        fill_rate=NumberRange(
+                            start_of_range=0.00065, end_of_range=0.0051
+                        ),
+                        power_ranges=[
+                            PowerRange(
+                                start_of_range=1400,
+                                end_of_range=11000,
+                                commodity_quantity=self.commodity_quantity,
+                            )
+                        ],
+                    )
+                ],
+                diagnostic_label="Charging",
+                abnormal_condition_only=False,
+            ),
+            name="charging",
+        )
+
+        actuator.add_transition(
+            Transition(
+                **{
+                    "id": uuid.uuid4(),
+                    "from": off_operation_mode.id,
+                    "to": charging_operation_mode.id,
+                    "start_timers": [],
+                    "blocking_timers": [],
+                    "transition_duration": Duration(3000),
+                    "abnormal_condition_only": False,
+                }
+            )
+        )
+        actuator.add_transition(
+            Transition(
+                **{
+                    "id": uuid.uuid4(),
+                    "from": charging_operation_mode.id,
+                    "to": off_operation_mode.id,
+                    "start_timers": [],
+                    "blocking_timers": [],
+                    "transition_duration": Duration(3000),
+                    "abnormal_condition_only": False,
+                }
+            ),
         )
 
     async def generate_tests(self):
         await super().generate_tests()
+
+        await self.add_trigger_method(self.send_frbc_system_description)
+
+        await self.add_trigger_method(self.send_leakage_behaviour)
+
+        if self.actuator is None:
+            return
+
+        # Start with not being plugged in.
+        actuator_status = FRBCActuatorStatus(
+            message_id=uuid.uuid4(),
+            actuator_id=self.actuator.id,
+            active_operation_mode_id=self.actuator.named_operation_modes["off"],
+            operation_mode_factor=0,
+            previous_operation_mode_id=None,
+            transition_timestamp=None,
+        )
+        storage_status = FRBCStorageStatus(
+            message_id=uuid.uuid4(), present_fill_level=0
+        )
+        await self.add_trigger_method(
+            # "Update Actuator Status (Off)",
+            self.send_actuator_status,
+            actuator_status,
+        )
+        await self.add_trigger_method(
+            # "Update Storage Status (Empty - No Car Plugged in)",
+            self.send_storage_status,
+            storage_status,
+        )
+
+        # Now start charging
+        actuator_status = FRBCActuatorStatus(
+            message_id=uuid.uuid4(),
+            actuator_id=self.actuator.id,
+            active_operation_mode_id=self.actuator.named_operation_modes["charging"],
+            operation_mode_factor=0,
+            previous_operation_mode_id=self.actuator.named_operation_modes["off"],
+            transition_timestamp=None,
+        )
+        storage_status = FRBCStorageStatus(
+            message_id=uuid.uuid4(), present_fill_level=50
+        )
+        await self.add_trigger_method(
+            # "Update Actuator Status (Charging)",
+            self.send_actuator_status,
+            actuator_status,
+        )
+        await self.add_trigger_method(
+            # "Update Storage Status (50% - Plugged in)",
+            self.send_storage_status,
+            storage_status,
+        )
+
+        power_measurement = PowerMeasurement(
+            message_id=uuid.uuid4(),
+            measurement_timestamp=current_timezone_time(),
+            values=[
+                PowerValue(commodity_quantity=self.commodity_quantity, value=10000)
+            ],
+        )
+        await self.add_trigger_method(
+            self.send_power_measurement, power_measurement, wait_time=2
+        )
+
+        await self.add_trigger_method(
+            None,
+            self._received_instruction_event,
+            wait_time=self.config.instruction_wait_timeout,
+        )
+
+        # Wait 10 seconds after receiving instruction
+        await self.add_trigger_method(None, wait_time=10)
+
+        await self.add_trigger_method(self.send_power_measurement_using_instructions)
+
+        # await self.add_trigger_method(self.send_revoke_leakage_behaviour)
+        # await self.add_trigger_method(self.send_revoke_system_description)
+
+    async def send_power_measurement_using_instructions(self):
+        if self.controller is None:
+            raise ValueError("No controller provided.")
+        instruction = self.controller.instructions.get_active_instruction(
+            current_timezone_time()
+        )
+        power_measurement = PowerMeasurement(
+            message_id=uuid.uuid4(),
+            measurement_timestamp=current_timezone_time(),
+            values=[
+                PowerValue(commodity_quantity=self.commodity_quantity, value=10000)
+            ],
+        )
+
+    async def fold(self):
+        await super().generate_tests()
         # Putting the tests here allows me to enforce the ordering.
         await self.add_test_method(
             "9.6.1 Update System Description (initial)",
-            self.test_send_frbc_system_description,
+            self.send_frbc_system_description,
             self.system_description,
         )
         dupe_system_description = self.system_description.model_copy()
         dupe_system_description.message_id = uuid.uuid4()
         await self.add_test_method(
             "9.6.1 Update System Description",
-            self.test_send_frbc_system_description,
+            self.send_frbc_system_description,
             dupe_system_description,
         )
         await self.add_test_method(
             "9.6.3. Update Leakage Behaviour (Initial)",
-            self.test_update_leakage_behaviour,
+            self.send_leakage_behaviour,
             self.leakage_behavior,
         )
         dupe_leakage_behaviour = self.leakage_behavior.model_copy()
         dupe_leakage_behaviour.message_id = uuid.uuid4()
         await self.add_test_method(
             "9.6.3. Update Leakage Behaviour",
-            self.test_update_leakage_behaviour,
+            self.send_leakage_behaviour,
             dupe_leakage_behaviour,
         )
 
@@ -205,12 +306,12 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
         )
         await self.add_test_method(
             "Update Actuator Status (Off)",
-            self.test_update_actuator_status,
+            self.send_actuator_status,
             actuator_status,
         )
         await self.add_test_method(
             "Update Storage Status (Empty - No Car Plugged in)",
-            self.test_update_storage_status,
+            self.send_storage_status,
             storage_status,
         )
 
@@ -228,12 +329,12 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
         )
         await self.add_test_method(
             "Update Actuator Status (Charging)",
-            self.test_update_actuator_status,
+            self.send_actuator_status,
             actuator_status,
         )
         await self.add_test_method(
             "Update Storage Status (50% - Plugged in)",
-            self.test_update_storage_status,
+            self.send_storage_status,
             storage_status,
         )
 
@@ -248,7 +349,7 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
             )
             await self.add_test_method(
                 "Update Power Measurement",
-                self.test_update_power_measurement,
+                self.send_power_measurement,
                 power_measurement,
                 2,
             )
@@ -268,5 +369,12 @@ class FRBCElectricVehicleScenarioTestCase(FRBCBaseScenarioTestCase):
         # Goes at the end since a number of other tests require system description as a precondition.
         await self.add_test_method(
             "9.6.2. Revoke System Description",
-            self.test_revoke_system_description,
+            self.send_revoke_system_description,
         )
+
+    async def validate_instruction(self, instruction: FRBCInstruction):
+        self.test_logger.info("RECEIVED INSTRUCTION.")
+        self.test_logger.info(instruction)
+
+        self.assertIsNotNone(instruction)
+        self.assertEqual(type(instruction), FRBCInstruction)
