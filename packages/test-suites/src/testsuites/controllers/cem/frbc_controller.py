@@ -1,6 +1,6 @@
 import asyncio
 from bisect import bisect_right, insort
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import datetime
 import logging
 from typing import Awaitable, Dict, List, Optional
@@ -42,7 +42,9 @@ from s2python.common import (
     InstructionStatusUpdate,
     InstructionStatus,
     RevokeObject,
-    RevokableObjects, Timer
+    RevokableObjects,
+    Timer,
+    ReceptionStatus,
 )
 import logging
 from datetime import datetime
@@ -52,71 +54,91 @@ logger = logging.getLogger(__name__)
 
 class InstructionsStore:
     def __init__(self):
-        self.instructions: List[FRBCInstruction] = []
+        self.instructions: Dict[uuid.UUID, List[FRBCInstruction]] = {}
+        # self.instructions: List[FRBCInstruction] = []
 
     def add_instruction(self, obj: FRBCInstruction):
         # Keep instructions sorted
-        insort(self.instructions, obj, key=lambda i: i.execution_time)
+        if obj.actuator_id in self.instructions:
+            insort(
+                self.instructions[obj.actuator_id], obj, key=lambda i: i.execution_time
+            )
+        else:
+            self.instructions[obj.actuator_id] = [obj]
 
-    def get_active_instruction(self, timestamp: datetime) -> Optional[FRBCInstruction]:
-        timestamps = [instruction.execution_time for instruction in self.instructions]
+    def get_active_instruction(
+        self, actuator_id: uuid.UUID, timestamp: datetime
+    ) -> Optional[FRBCInstruction]:
+        if actuator_id not in self.instructions:
+            return None
+
+        timestamps = [
+            instruction.execution_time for instruction in self.instructions[actuator_id]
+        ]
+        logger.info(
+            "Getting instruction for timestamp %s. First in list = %s",
+            timestamp,
+            timestamps[0] if len(timestamps) > 0 else None,
+        )
         idx = bisect_right(timestamps, timestamp) - 1
         if idx >= 0:
-            return self.instructions[idx]
+            return self.instructions[actuator_id][idx]
         return None
+
 
 @dataclass
 class ActuatorInformation:
     id = uuid.uuid4()
-    diagnostic_label : str = ""
-    supported_commodities : List[Commodity]= []
+    diagnostic_label: str = ""
+    supported_commodities: List[Commodity] = field(default_factory=list)
 
     # Map of the UUID to the operation mode
-    operation_modes : Dict[uuid.UUID, FRBCOperationMode] = {}
+    operation_modes: Dict[uuid.UUID, FRBCOperationMode] = field(default_factory=dict)
 
-    named_operation_modes : Dict[str, uuid.UUID] = {}
+    named_operation_modes: Dict[str, uuid.UUID] = field(default_factory=dict)
 
     # Map of the transition UUID to the transition
-    transitions : Dict[uuid.UUID, Transition]  = {}
+    transitions: Dict[uuid.UUID, Transition] = field(default_factory=dict)
 
     # Map from an operation mode to the transitions uuids which can be made
-    transitions_from_to : Dict[uuid.UUID, List[uuid.UUID]] = {}
-    
-    # TODO: Not really sure what these are for
-    timers : List[Timer]= []
+    transitions_from_to: Dict[uuid.UUID, List[uuid.UUID]] = field(default_factory=dict)
 
+    # TODO: Not really sure what these are for
+    timers: List[Timer] = field(default_factory=list)
 
     # actuator_status : FRBCActuatorStatus = None
 
-    def add_operation_mode(self, mode : FRBCOperationMode, name : Optional[str] = None) -> FRBCOperationMode:
+    def add_operation_mode(
+        self, mode: FRBCOperationMode, name: Optional[str] = None
+    ) -> FRBCOperationMode:
         self.operation_modes[mode.id] = mode
 
         if name is not None:
             self.named_operation_modes[name] = mode.id
-        
+
         return mode
-    
-    def get_operation_mode(self, id : uuid.UUID) -> FRBCOperationMode:
+
+    def get_operation_mode(self, id: uuid.UUID) -> FRBCOperationMode:
         return self.operation_modes[id]
-    
-    def get_named_operation_mode(self, name : str) -> FRBCOperationMode:
+
+    def get_named_operation_mode(self, name: str) -> FRBCOperationMode:
         id = self.named_operation_modes[name]
         return self.get_operation_mode(id)
-    
-    def add_transition(self, transition : Transition):
+
+    def add_transition(self, transition: Transition):
         self.transitions[transition.id] = transition
 
         if transition.from_ in self.transitions_from_to:
             self.transitions_from_to[transition.from_].append(transition.id)
         else:
             self.transitions_from_to[transition.from_] = [transition.id]
-    
+
     def add_timer(self, timer):
         self.timers.append(timer)
 
     # def set_actuator_status(self, actuator_status : FRBCActuatorStatus):
     #     self.actuator_status = actuator_status
-    
+
     def to_actuator_description(self):
         return FRBCActuatorDescription(
             id=self.id,
@@ -130,17 +152,15 @@ class ActuatorInformation:
 
 class FRBCCEMController(NotControllableCEMController):
     control_type = ProtocolControlType.FILL_RATE_BASED_CONTROL
-    system_description_id: Optional[uuid.UUID] = None
-
 
     leakage_behaviour: Optional[FRBCLeakageBehaviour] = None
 
     usage_forecast: Optional[FRBCUsageForecast] = None
 
-    actuators : Dict[uuid.UUID, ActuatorInformation]
+    actuators: Dict[uuid.UUID, ActuatorInformation] = {}
     actuator_status: dict[uuid.UUID, FRBCActuatorStatus] = {}
 
-    storage_status : Optional[FRBCStorageStatus ] = None
+    storage_status: Optional[FRBCStorageStatus] = None
 
     instructions: InstructionsStore
 
@@ -149,82 +169,83 @@ class FRBCCEMController(NotControllableCEMController):
 
         self.instructions = InstructionsStore()
 
-
         self.add_handler(FRBCInstruction, self.handle_instruction)
 
-    def add_actuator(self, actuator : ActuatorInformation) :
+    def add_actuator(self, actuator: ActuatorInformation):
         self.actuators[actuator.id] = actuator
 
-    def set_storage_description(self, storage_description : FRBCStorageDescription):
+    def set_storage_description(self, storage_description: FRBCStorageDescription):
         self.storage_description = storage_description
-    
-    def set_leakage_behaviour(self, leakage_behaviour : FRBCLeakageBehaviour):
+
+    def set_leakage_behaviour(self, leakage_behaviour: FRBCLeakageBehaviour):
         self.leakage_behaviour = leakage_behaviour
 
-
-    def get_system_description(self, new_id=False):
-        if self.storage_description is None: 
+    def generate_system_description(self):
+        if self.storage_description is None:
             raise ValueError("Storage description must be set.")
-        
-        if self.system_description_id is None or new_id:
-            self.system_description_id = uuid.uuid4()
 
-        return FRBCSystemDescription(
-            message_id=self.system_description_id,
+        self.system_description = FRBCSystemDescription(
+            message_id=uuid.uuid4(),
             valid_from=current_timezone_time(),
             actuators=[a.to_actuator_description() for a in self.actuators.values()],
             storage=self.storage_description,
         )
-    
-    async def handle_instruction(
-        self, message: FRBCInstruction, channel: S2Channel, send_okay: Awaitable
-    ):
-        self.instructions.add_instruction(message)
+        return self.system_description
 
-        await send_okay
+    def get_active_operation_mode(self, actuator_id: uuid.UUID):
+        actuator_status = self.actuator_status[actuator_id]
+
+        operation_mode = self.actuators[actuator_id].operation_modes[
+            actuator_status.active_operation_mode_id
+        ]
+
+        return operation_mode
 
     async def send_frbc_system_description(
         self, channel: Optional[S2Channel]
-    ):
+    ) -> tuple[FRBCSystemDescription, ReceptionStatus]:
         if channel is None:
             raise ValueError("Channel not set.")
 
         logger.info("Sending FRBC system description")
+        system_description = self.generate_system_description()
         reception_status = await channel.send_msg_and_await_reception_status(
-            self.get_system_description(), raise_on_error=False
+            system_description, raise_on_error=False
         )
-        return reception_status
+        return system_description, reception_status
 
     async def revoke_frbc_system_description(self, channel: Optional[S2Channel]):
         if channel is None:
             raise ValueError("Channel not set.")
 
-        if self.system_description is None:
+        if self.system_description_id is None:
             raise ValueError("No System Description is set.")
 
         reception_status = await channel.send_msg_and_await_reception_status(
             RevokeObject(
                 message_id=uuid.uuid4(),
-                object_id=self.system_description.message_id,
+                object_id=self.system_description_id,
                 object_type=RevokableObjects.FRBC_SystemDescription,
             ),
             raise_on_error=False,
         )
 
-        self.system_description = None
+        self.system_description_id = None
         return reception_status
 
-    async def send_frbc_leakage_behavior(
-        self, channel: Optional[S2Channel], leakage_behaviour: FRBCLeakageBehaviour
-    ):
+    async def update_frbc_leakage_behavior(
+        self, channel: Optional[S2Channel]
+    ) -> ReceptionStatus:
         if channel is None:
             raise ValueError("Channel not set.")
 
+        if self.leakage_behaviour is None:
+            raise ValueError("Leakage behavior not set.")
+
         reception_status = await channel.send_msg_and_await_reception_status(
-            leakage_behaviour, raise_on_error=False
+            self.leakage_behaviour, raise_on_error=False
         )
 
-        self.leakage_behaviour = leakage_behaviour
         return reception_status
 
     async def revoke_leakage_behaviour(self, channel: Optional[S2Channel]):
@@ -238,9 +259,9 @@ class FRBCCEMController(NotControllableCEMController):
         # self.leakage_behaviour = None
         # return reception_status
 
-    async def send_frbc_usage_forecast(
+    async def update_frbc_usage_forecast(
         self, channel: Optional[S2Channel], forecast: FRBCUsageForecast
-    ):
+    ) -> ReceptionStatus:
         if channel is None:
             raise ValueError("Channel not set.")
 
@@ -248,10 +269,9 @@ class FRBCCEMController(NotControllableCEMController):
             forecast, raise_on_error=False
         )
 
-        self.usage_forecast
         return reception_status
 
-    async def send_actuator_status(
+    async def update_actuator_status(
         self, channel: Optional[S2Channel], actuator_status: FRBCActuatorStatus
     ):
         if channel is None:
@@ -265,7 +285,7 @@ class FRBCCEMController(NotControllableCEMController):
 
         return reception_status
 
-    async def send_storage_status(
+    async def update_storage_status(
         self, channel: Optional[S2Channel], storage_status: FRBCStorageStatus
     ):
         if channel is None:
@@ -279,11 +299,6 @@ class FRBCCEMController(NotControllableCEMController):
 
         return reception_status
 
-    async def get_current_operation_mode(self):
-        instruction = self.instructions.get_active_instruction(current_timezone_time())
-
-        self.get_current_operation_mode
-
     async def send_instruction_status_update(
         self, channel: "S2Channel", instruction_status_update: InstructionStatusUpdate
     ):
@@ -291,3 +306,24 @@ class FRBCCEMController(NotControllableCEMController):
             instruction_status_update, raise_on_error=False
         )
         return reception_status
+
+    async def handle_instruction(
+        self, instruction: FRBCInstruction, channel: S2Channel, send_okay: Awaitable
+    ):
+        logger.info("Instruction: %s", instruction)
+
+        self.instructions.add_instruction(instruction)
+
+        await send_okay
+        update = InstructionStatusUpdate(
+            message_id=uuid.uuid4(),
+            instruction_id=instruction.id,
+            status_type=InstructionStatus.SUCCEEDED,
+            timestamp=current_timezone_time(),
+        )
+
+        reception_status = await channel.send_msg_and_await_reception_status(
+            update, raise_on_error=False
+        )
+
+        # return update, reception_status

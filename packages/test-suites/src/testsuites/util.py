@@ -56,6 +56,8 @@ async def wait_for_event_or_stop(
 
         time_waited += stop_check_timout
 
-
+from zoneinfo import ZoneInfo
+# TIMEZONE = timezone.utc
+TIMEZONE = ZoneInfo("Europe/Amsterdam")
 def current_timezone_time():
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=TIMEZONE)

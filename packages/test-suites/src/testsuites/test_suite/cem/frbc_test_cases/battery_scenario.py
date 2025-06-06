@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import dataclass
 import datetime
+from typing import Awaitable, Dict
 import uuid
 from connectivity.config import FRBCCEMTestConfig
 from connectivity.s2_channel import S2Channel
@@ -33,12 +34,14 @@ from s2python.common import (
     Transition,
     Duration,
     RevokeObject,
+    ReceptionStatus,
     InstructionStatusUpdate,
     InstructionStatus,
 )
 
 from testsuites.certificate.certificate import ComplianceReport
 from testsuites.controllers.cem import FRBCCEMController
+from testsuites.controllers.cem.frbc_controller import ActuatorInformation
 from testsuites.test_logger import TestLogger
 from testsuites.test_suite.test_suite import NotApplicableTestException, S2TestCase
 from testsuites.util import current_timezone_time
@@ -56,6 +59,8 @@ SIMULATION_DURATION = 60
 class FRBCBatteryScenarioTestCase(FRBCCEMTestCase):
     name = "Battery Scenario Test Case"
 
+    actuator_initial_status: Dict[uuid.UUID, FRBCActuatorStatus] = {}
+
     def __init__(
         self,
         config: FRBCCEMTestConfig,
@@ -68,37 +73,47 @@ class FRBCBatteryScenarioTestCase(FRBCCEMTestCase):
 
         self.create_ev_example_frbc_system_description()
 
-        self.leakage_behavior = FRBCLeakageBehaviour(
-            message_id=uuid.uuid4(),
-            valid_from=current_timezone_time(),
-            elements=[
-                FRBCLeakageBehaviourElement(
-                    fill_level_range=NumberRange(start_of_range=0, end_of_range=1),
-                    leakage_rate=(LEAKAGE_W / CAPACITY_WH) / 3600,
-                )
-            ],
+        self.controller.set_leakage_behaviour(
+            FRBCLeakageBehaviour(
+                message_id=uuid.uuid4(),
+                valid_from=current_timezone_time(),
+                elements=[
+                    FRBCLeakageBehaviourElement(
+                        fill_level_range=NumberRange(start_of_range=0, end_of_range=1),
+                        leakage_rate=(LEAKAGE_W / CAPACITY_WH) / 3600,
+                    )
+                ],
+            )
         )
 
-        self.controller.add_handler(FRBCInstruction, self.handle_instruction)
+        self.message_handlers[FRBCInstruction] = self.handle_instruction
+
+        self.fill_level = INITIAL_FILL_LEVEL
 
         self._simulation_started = asyncio.Event()
 
     def create_ev_example_frbc_system_description(self):
         self.commodity = Commodity.ELECTRICITY
         self.commodity_quantity = CommodityQuantity.ELECTRIC_POWER_L1
-        self.fill_level = INITIAL_FILL_LEVEL
 
-        self.storage_description = FRBCStorageDescription(
-            diagnostic_label="Battery",
-            fill_level_label="Fraction, 0.0 to 1.0",
-            provides_leakage_behaviour=True,
-            provides_fill_level_target_profile=False,
-            provides_usage_forecast=True,
-            fill_level_range=NumberRange(start_of_range=0, end_of_range=1),
+        self.controller.set_storage_description(
+            FRBCStorageDescription(
+                diagnostic_label="Battery",
+                fill_level_label="Fraction, 0.0 to 1.0",
+                provides_leakage_behaviour=True,
+                provides_fill_level_target_profile=False,
+                provides_usage_forecast=True,
+                fill_level_range=NumberRange(start_of_range=0, end_of_range=1),
+            )
         )
 
-        self.operation_modes = {
-            "idle": FRBCOperationMode(
+        actuator = ActuatorInformation(
+            supported_commodities=[self.commodity],
+        )
+        self.actuator = actuator
+
+        idle_operation_mode = actuator.add_operation_mode(
+            FRBCOperationMode(
                 id=uuid.uuid4(),
                 elements=[
                     FRBCOperationModeElement(
@@ -118,7 +133,10 @@ class FRBCBatteryScenarioTestCase(FRBCCEMTestCase):
                 diagnostic_label="Idle",
                 abnormal_condition_only=False,
             ),
-            "discharge": FRBCOperationMode(
+            name="idle",
+        )
+        discharge_operation_mode = actuator.add_operation_mode(
+            FRBCOperationMode(
                 id=uuid.uuid4(),
                 elements=[
                     FRBCOperationModeElement(
@@ -144,7 +162,11 @@ class FRBCBatteryScenarioTestCase(FRBCCEMTestCase):
                 diagnostic_label="Idle",
                 abnormal_condition_only=False,
             ),
-            "charge": FRBCOperationMode(
+            name="discharge",
+        )
+
+        charge_operation_mode = actuator.add_operation_mode(
+            FRBCOperationMode(
                 id=uuid.uuid4(),
                 elements=[
                     FRBCOperationModeElement(
@@ -170,107 +192,137 @@ class FRBCBatteryScenarioTestCase(FRBCCEMTestCase):
                 diagnostic_label="Idle",
                 abnormal_condition_only=False,
             ),
-        }
-
-        self.id_to_op_mode: dict[uuid.UUID, str] = {
-            self.operation_modes["idle"].id: "idle",
-            self.operation_modes["charge"].id: "charge",
-            self.operation_modes["discharge"].id: "discharge",
-        }
+            name="charge",
+        )
 
         self.last_updated = current_timezone_time()
         self.active_operation_mode = "idle"
         self.operation_mode_factor = 0.5
 
-        self.actuator = FRBCActuatorDescription(
-            id=uuid.uuid4(),
-            diagnostic_label="",
-            operation_modes=[
-                self.operation_modes["idle"],
-                self.operation_modes["charge"],
-                self.operation_modes["discharge"],
-            ],
-            transitions=[
-                # Idle <--> charging
-                Transition(
-                    **{
-                        "id": uuid.uuid4(),
-                        "from": self.operation_modes["idle"].id,
-                        "to": self.operation_modes["charge"].id,
-                        "start_timers": [],
-                        "blocking_timers": [],
-                        "transition_duration": None,
-                        "abnormal_condition_only": False,
-                    }
-                ),
-                Transition(
-                    **{
-                        "id": uuid.uuid4(),
-                        "from": self.operation_modes["charge"].id,
-                        "to": self.operation_modes["idle"].id,
-                        "start_timers": [],
-                        "blocking_timers": [],
-                        "transition_duration": None,
-                        "abnormal_condition_only": False,
-                    }
-                ),
-                # Idle <--> discharging
-                Transition(
-                    **{
-                        "id": uuid.uuid4(),
-                        "from": self.operation_modes["idle"].id,
-                        "to": self.operation_modes["discharge"].id,
-                        "start_timers": [],
-                        "blocking_timers": [],
-                        "transition_duration": None,
-                        "abnormal_condition_only": False,
-                    }
-                ),
-                Transition(
-                    **{
-                        "id": uuid.uuid4(),
-                        "from": self.operation_modes["discharge"].id,
-                        "to": self.operation_modes["idle"].id,
-                        "start_timers": [],
-                        "blocking_timers": [],
-                        "transition_duration": None,
-                        "abnormal_condition_only": False,
-                    }
-                ),
-            ],
-            timers=[],
-            supported_commodities=[self.commodity],
+        # Idle <--> charging
+        actuator.add_transition(
+            Transition(
+                **{
+                    "id": uuid.uuid4(),
+                    "from": idle_operation_mode.id,
+                    "to": charge_operation_mode.id,
+                    "start_timers": [],
+                    "blocking_timers": [],
+                    "transition_duration": None,
+                    "abnormal_condition_only": False,
+                }
+            ),
+        )
+        actuator.add_transition(
+            Transition(
+                **{
+                    "id": uuid.uuid4(),
+                    "from": charge_operation_mode.id,
+                    "to": idle_operation_mode.id,
+                    "start_timers": [],
+                    "blocking_timers": [],
+                    "transition_duration": None,
+                    "abnormal_condition_only": False,
+                }
+            ),
+        )
+        # Idle <--> discharging
+        actuator.add_transition(
+            Transition(
+                **{
+                    "id": uuid.uuid4(),
+                    "from": idle_operation_mode.id,
+                    "to": discharge_operation_mode.id,
+                    "start_timers": [],
+                    "blocking_timers": [],
+                    "transition_duration": None,
+                    "abnormal_condition_only": False,
+                }
+            ),
+        )
+        actuator.add_transition(
+            Transition(
+                **{
+                    "id": uuid.uuid4(),
+                    "from": discharge_operation_mode.id,
+                    "to": idle_operation_mode.id,
+                    "start_timers": [],
+                    "blocking_timers": [],
+                    "transition_duration": None,
+                    "abnormal_condition_only": False,
+                }
+            ),
         )
 
-        self.system_description = FRBCSystemDescription(
+        self.controller.add_actuator(actuator)
+        self.controller.generate_system_description()
+
+        self.actuator_initial_status[actuator.id] = FRBCActuatorStatus(
             message_id=uuid.uuid4(),
-            valid_from=current_timezone_time(),
-            actuators=[self.actuator],
-            storage=self.storage_description,
+            actuator_id=actuator.id,
+            active_operation_mode_id=idle_operation_mode.id,
+            operation_mode_factor=0.5,
+            previous_operation_mode_id=None,
+            transition_timestamp=None,
         )
 
-    def update(self) -> FRBCStorageStatus:
+    async def update(self):
         delta_time = current_timezone_time() - self.last_updated
         self.last_updated = current_timezone_time()
 
-        fill_rates = (
-            self.operation_modes[self.active_operation_mode].elements[0].fill_rate
-        )
-        fill_rate = (
-            fill_rates.start_of_range
-            + (fill_rates.end_of_range - fill_rates.start_of_range)
-            * self.operation_mode_factor
-        )
-        self.fill_level += fill_rate * delta_time.seconds
+        # TODO: CHECK INSTRUCTION
+        self.test_logger.info("Running Step")
+        for actuator in self.controller.actuators.values():
+            current_operation_mode = self.controller.get_active_operation_mode(
+                actuator.id
+            )
 
-        if self.fill_level > 1:
-            self.fill_level = 1
-        elif self.fill_level < 0:
-            self.fill_level = 0
+            instruction = self.controller.instructions.get_active_instruction(
+                actuator_id=actuator.id, timestamp=current_timezone_time()
+            )
+            if instruction is not None:
+                self.test_logger.info(f"Instruction found: {instruction}")
+            if (
+                instruction is not None
+                and instruction.operation_mode != current_operation_mode.id
+            ):
+                self.test_logger.info(f"Updating instruction status.")
+                await self.send_actuator_status(
+                    FRBCActuatorStatus(
+                        message_id=uuid.uuid4(),
+                        active_operation_mode_id=instruction.operation_mode,
+                        actuator_id=instruction.actuator_id,
+                        operation_mode_factor=instruction.operation_mode_factor,
+                        previous_operation_mode_id=current_operation_mode.id,
+                        transition_timestamp=current_timezone_time(),
+                    )
+                )
 
-        return FRBCStorageStatus(
-            message_id=uuid.uuid4(), present_fill_level=self.fill_level
-        )
+                current_operation_mode = self.controller.get_active_operation_mode(
+                    actuator.id
+                )
+
+            # Not sure what to do with the others here... only using 0
+            fill_rate_range = current_operation_mode.elements[0].fill_rate
+            fill_rate = (
+                fill_rate_range.start_of_range
+                + (fill_rate_range.end_of_range - fill_rate_range.start_of_range)
+                * self.operation_mode_factor
+            )
+            self.fill_level += fill_rate * delta_time.seconds
+
+            if self.fill_level > 1:
+                self.fill_level = 1
+            elif self.fill_level < 0:
+                self.fill_level = 0
+
+            self.test_logger.info("Updating storage status.")
+            await self.controller.update_storage_status(
+                self.channel,
+                FRBCStorageStatus(
+                    message_id=uuid.uuid4(), present_fill_level=self.fill_level
+                ),
+            )
 
     def forecast(self) -> FRBCUsageForecast:
         return FRBCUsageForecast(
@@ -290,122 +342,116 @@ class FRBCBatteryScenarioTestCase(FRBCCEMTestCase):
             ],
         )
 
-    async def handle_instruction(self, instruction: FRBCInstruction):
-        await self._simulation_started.wait()
-        self.test_logger.info(f"Received instruction: {instruction}")
-        if instruction.operation_mode in self.id_to_op_mode:
-            self.active_operation_mode = self.id_to_op_mode[instruction.operation_mode]
-            self.operation_mode_factor = self.operation_mode_factor
-            status_type = InstructionStatus.ACCEPTED
-        else:
-            status_type = InstructionStatus.REJECTED
-        status = InstructionStatusUpdate(
-            instruction_id=instruction.message_id,
-            status_type=status_type,
-            timestamp=current_timezone_time(),
-        )
-        await self.controller.send_instruction_status_update(self.channel, status)
+    async def handle_instruction(
+        self, instruction: FRBCInstruction, channel: S2Channel, send_okay: Awaitable
+    ):
+        await self.handle_with_original_handler(instruction, channel, send_okay)
 
-    async def test_simulate(self):
-        self._simulation_started.set()
-        self.test_logger.info("Simulation started.")
-
-        for i in range(10):
-            await asyncio.sleep(10)
-
-            storage_status = self.update()
-
-            await self.controller.send_storage_status(self.channel, storage_status)
-
-    async def generate_tests(self):
-        await super().generate_tests()
-        # Putting the tests here allows me to enforce the ordering.
-        await self.add_test_method(
-            "9.6.1 Update System Description (initial)",
-            self.send_frbc_system_description,
-            self.system_description,
-        )
-        await self.add_test_method(
-            "9.6.3. Update Leakage Behaviour (Initial)",
-            self.send_leakage_behaviour,
-            self.leakage_behavior,
+        await self.add_trigger_method(
+            self.validate_instruction,
+            instruction,
         )
 
-        actuator_status = FRBCActuatorStatus(
-            message_id=uuid.uuid4(),
-            actuator_id=self.actuator.id,
-            active_operation_mode_id=self.operation_modes["idle"].id,
-            operation_mode_factor=0,
-            previous_operation_mode_id=None,
-            transition_timestamp=None,
-        )
+        # await self._simulation_started.wait()
+        # self.test_logger.info(f"Received instruction: {instruction}")
+        # if instruction.operation_mode in self.id_to_op_mode:
+        #     self.active_operation_mode = self.id_to_op_mode[instruction.operation_mode]
+        #     self.operation_mode_factor = self.operation_mode_factor
+        #     status_type = InstructionStatus.ACCEPTED
+        # else:
+        #     status_type = InstructionStatus.REJECTED
+        # status = InstructionStatusUpdate(
+        #     instruction_id=instruction.message_id,
+        #     status_type=status_type,
+        #     timestamp=current_timezone_time(),
+        # )
+        # await self.controller.send_instruction_status_update(self.channel, status)
+
+    async def validate_instruction(
+        self,
+        instruction: FRBCInstruction,
+        # status_update: InstructionStatusUpdate,
+        # status_update_reception_status: ReceptionStatus,
+    ):
+        self.assertIsNotNone(instruction)
+        self.assertEqual(type(instruction), FRBCInstruction)
+
+        # self.assertIsNotNone(status_update)
+        # self.assertEqual(type(status_update), FRBCInstruction)
+
+        # self.assertIsNotNone(status_update_reception_status)
+        # self.assertEqual(type(status_update_reception_status), ReceptionStatus)
+
+    async def send_storage_status(self):
         storage_status = FRBCStorageStatus(
             message_id=uuid.uuid4(), present_fill_level=self.fill_level
         )
-        await self.add_test_method(
-            "Update Actuator Status (Idle)",
-            self.send_actuator_status,
-            actuator_status,
+
+        return await super().send_storage_status(storage_status)
+
+    async def send_initial_info(self):
+        for initial_status in self.actuator_initial_status.values():
+            await self.send_actuator_status(initial_status)
+
+        await self.send_storage_status()
+
+        await self.send_power_measurement(
+            PowerMeasurement(
+                message_id=uuid.uuid4(),
+                measurement_timestamp=current_timezone_time(),
+                values=[
+                    PowerValue(commodity_quantity=self.commodity_quantity, value=0)
+                ],
+            )
         )
-        await self.add_test_method(
-            "Update Storage Status (Initial)",
-            self.send_storage_status,
-            storage_status,
+
+        forecast = self.forecast()
+        await self.send_usage_forecast(forecast)
+
+    async def execute_simulation_step(self):
+        await self.update()
+
+    async def change_to_discharging(self):
+        actuator = list(self.controller.actuators.values())[0]
+
+        discharge_om = actuator.get_named_operation_mode("discharge")
+        active_operation_mode_id = self.controller.actuator_status[
+            actuator.id
+        ].active_operation_mode_id
+
+        if active_operation_mode_id != discharge_om:
+            await self.send_actuator_status(
+                FRBCActuatorStatus(
+                    message_id=uuid.uuid4(),
+                    active_operation_mode_id=discharge_om.id,
+                    actuator_id=actuator.id,
+                    operation_mode_factor=0.5,
+                    previous_operation_mode_id=active_operation_mode_id,
+                    transition_timestamp=current_timezone_time(),
+                )
+            )
+
+    async def generate_tests(self):
+        await super().generate_tests()
+
+        await self.add_trigger_method(self.send_frbc_system_description)
+        await self.add_trigger_method(self.send_leakage_behaviour)
+
+        await self.add_trigger_method(self.send_initial_info)
+
+        NUM_SIMULATION_ITERATIONS = 2
+        SIMULATION_STEP_DURATION = 10
+        for i in range(NUM_SIMULATION_ITERATIONS):
+            await self.add_trigger_method(
+                self.execute_simulation_step, wait_time=SIMULATION_STEP_DURATION
+            )
+
+        await self.add_trigger_method(
+            self.change_to_discharging,
         )
-        await self.add_test_method(
-            "Update Usage Forecast (Initial)",
-            self.send_usage_forecast,
-            self.forecast(),
-        )
-        await self.add_test_method("Simulation", self.test_simulate)
 
-        # # Now start discharging
-        # actuator_status = FRBCActuatorStatus(
-        #     message_id=uuid.uuid4(),
-        #     actuator_id=self.actuator.id,
-        #     active_operation_mode_id=self.charging_operation_mode.id,
-        #     operation_mode_factor=0,
-        #     previous_operation_mode_id=self.off_operation_mode.id,
-        #     transition_timestamp=current_timezone_time(),
-        # )
-        # storage_status = FRBCStorageStatus(
-        #     message_id=uuid.uuid4(), present_fill_level=50
-        # )
-        # await self.add_test_method(
-        #     "Update Actuator Status (Charging)",
-        #     self.test_update_actuator_status,
-        #     actuator_status,
-        # )
-        # await self.add_test_method(
-        #     "Update Storage Status (50% - Plugged in)",
-        #     self.test_update_storage_status,
-        #     storage_status,
-        # )
-
-        # # Send 2 power measurements with 2 seconds in between
-        # for i in range(2):
-        #     power_measurement = PowerMeasurement(
-        #         message_id=uuid.uuid4(),
-        #         measurement_timestamp=current_timezone_time(),
-        #         values=[
-        #             PowerValue(commodity_quantity=self.commodity_quantity, value=10000)
-        #         ],
-        #     )
-        #     await self.add_test_method(
-        #         "Update Power Measurement",
-        #         self.test_update_power_measurement,
-        #         power_measurement,
-        #         2,
-        #     )
-
-        # await self.add_test_method(
-        #     "Wait for instruction",
-        #     self.wait_for_instruction,
-        #     self.config.instruction_wait_timeout,
-        # )
-
-        # # Goes at the end since a number of other tests require system description as a precondition.
-        # await self.add_test_method(
-        #     "9.6.2. Revoke System Description",
-        #     self.test_revoke_system_description,
-        # )
+        MAIN_NUM_SIMULATION_ITERATIONS = 20
+        for i in range(MAIN_NUM_SIMULATION_ITERATIONS):
+            await self.add_trigger_method(
+                self.execute_simulation_step, wait_time=SIMULATION_STEP_DURATION
+            )

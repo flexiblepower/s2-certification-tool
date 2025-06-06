@@ -92,9 +92,20 @@ class NotControllableCEMTestCase(S2TestCase):
             self.channel, power_measurement
         )
         await self.add_test_method(
-            "Update power_measurement forecast",
+            "Update power measurement",
             self.base_message_send_validate,
             power_measurement,
+            reception_status,
+        )
+
+    async def send_power_forecast(self, power_forecast: PowerForecast):
+        reception_status = await self.controller.send_power_forecast(
+            self.channel, power_forecast
+        )
+        await self.add_test_method(
+            "Update power forecast",
+            self.base_message_send_validate,
+            power_forecast,
             reception_status,
         )
 

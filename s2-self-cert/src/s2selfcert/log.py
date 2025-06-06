@@ -95,7 +95,7 @@ def get_log_config(test_log_file_name=None) -> Dict:
             },
             "messages": {
                 "handlers": ["messages-file-handler"],
-                "level": "INFO",
+                "level": "DEBUG",
                 "propagate": False,
             },
         },

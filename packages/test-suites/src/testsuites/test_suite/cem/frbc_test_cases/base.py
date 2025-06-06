@@ -34,6 +34,8 @@ from s2python.common import (
     Duration,
     RevokeObject,
     RevokableObjects,
+    InstructionStatusUpdate,
+    ReceptionStatus,
 )
 
 from testsuites.controllers.cem.not_controllable_controller import (
@@ -110,12 +112,10 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
             f"{precondition_id + ' ' if precondition_id is not None else '' }Task Precondition 'Update System Description' is complete."
         )
 
-    async def send_frbc_system_description(
-        self, system_description: FRBCSystemDescription
-    ):
+    async def send_frbc_system_description(self):
         # Only send the FRBC System Description once.
         reception_status = await self.controller.send_frbc_system_description(
-            self.channel, system_description
+            self.channel
         )
         test_name = "9.6.1 Update System Description"
         if not self._frbc_system_description_sent_event.is_set():
@@ -125,7 +125,7 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
         await self.add_test_method(
             test_name,
             self.base_message_send_validate,
-            system_description,
+            self.controller.system_description,
             reception_status,
         )
 
@@ -146,11 +146,11 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
         #     reception_status,
         # )
 
-    async def send_leakage_behaviour(self, leakage_behaviour: FRBCLeakageBehaviour):
+    async def send_leakage_behaviour(self):
         self.update_system_description_precondition("9.6.3.2.")
 
-        reception_status = await self.controller.send_frbc_leakage_behavior(
-            self.channel, leakage_behaviour
+        reception_status = await self.controller.update_frbc_leakage_behavior(
+            self.channel
         )
         test_name = "9.6.3. Update Leakage Behaviour"
         if not self._frbc_leakage_behavior_sent_event.is_set():
@@ -160,7 +160,7 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
         await self.add_test_method(
             test_name,
             self.base_message_send_validate,
-            leakage_behaviour,
+            self.controller.leakage_behaviour,
             reception_status,
         )
 
@@ -180,7 +180,7 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
     async def send_usage_forecast(self, forecast: FRBCUsageForecast):
         self.update_system_description_precondition("9.6.5.2.")
 
-        reception_status = await self.controller.send_frbc_usage_forecast(
+        reception_status = await self.controller.update_frbc_usage_forecast(
             self.channel, forecast
         )
         await self.add_test_method(
@@ -193,7 +193,7 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
     async def send_actuator_status(self, actuator_status: FRBCActuatorStatus):
         self.update_system_description_precondition()
 
-        reception_status = await self.controller.send_actuator_status(
+        reception_status = await self.controller.update_actuator_status(
             self.channel, actuator_status
         )
         await self.add_test_method(
@@ -206,7 +206,7 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
     async def send_storage_status(self, storage_status: FRBCStorageStatus):
         self.update_system_description_precondition()
 
-        reception_status = await self.controller.send_storage_status(
+        reception_status = await self.controller.update_storage_status(
             self.channel, storage_status
         )
 
@@ -221,6 +221,18 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
         self.update_system_description_precondition()
         return await super().send_power_measurement(power_measurement)
 
+    async def send_usage_forecast(self, forecast: FRBCUsageForecast):
+        reception_status = await self.controller.update_frbc_usage_forecast(
+            self.channel, forecast
+        )
+
+        await self.add_test_method(
+            "Update usage forecast",
+            self.base_message_send_validate,
+            forecast,
+            reception_status,
+        )
+
     async def wait_for_instruction(self, wait_time=10):
         try:
             instruction = await self.controller.message_awaiter.wait_for_message(
@@ -231,7 +243,12 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
             raise NotApplicableTestException("No instruction received.")
 
     @abc.abstractmethod
-    async def validate_instruction(self, instruction: FRBCInstruction):
+    async def validate_instruction(
+        self,
+        instruction: FRBCInstruction,
+        status_update: InstructionStatusUpdate,
+        status_update_reception_status: ReceptionStatus,
+    ):
         pass
 
     async def handle_instruction(

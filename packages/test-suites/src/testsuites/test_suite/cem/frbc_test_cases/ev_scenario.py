@@ -39,9 +39,14 @@ from testsuites.certificate.certificate import ComplianceReport
 from testsuites.controllers.cem import FRBCCEMController
 from testsuites.controllers.cem.frbc_controller import ActuatorInformation
 from testsuites.test_logger import TestLogger
-from testsuites.test_suite.test_suite import NotApplicableTestException, S2TestCase
 from testsuites.util import current_timezone_time
 from .base import FRBCCEMTestCase, FRBCCEMTestCase
+
+CHARGE_EFFICIENCY: float = 1.0
+DISCHARGE_EFFICIENCY: float = 1.0
+CAPACITY_WH: float = 20_000.0
+LEAKAGE_W: float = 0.5
+INITIAL_FILL_LEVEL: float = 0.5
 
 
 class FRBCElectricVehicleScenarioTestCase(FRBCCEMTestCase):
@@ -125,7 +130,11 @@ class FRBCElectricVehicleScenarioTestCase(FRBCCEMTestCase):
                             start_of_range=0.0, end_of_range=100.0
                         ),
                         fill_rate=NumberRange(
-                            start_of_range=0.00065, end_of_range=0.0051
+                            start_of_range=0.5
+                            * CHARGE_EFFICIENCY
+                            * ((5000.0 / CAPACITY_WH) / 3600),
+                            end_of_range=CHARGE_EFFICIENCY
+                            * (5000.0 / CAPACITY_WH / 3600.0),
                         ),
                         power_ranges=[
                             PowerRange(
@@ -169,8 +178,11 @@ class FRBCElectricVehicleScenarioTestCase(FRBCCEMTestCase):
             ),
         )
 
-    async def generate_tests(self):
-        await super().generate_tests()
+    async def add_initial_triggers(self):
+        """
+        The trigger definitions to send the initial data to the CEM.
+        Start with car unplugged and storage status 0%
+        """
 
         await self.add_trigger_method(self.send_frbc_system_description)
 
@@ -202,6 +214,7 @@ class FRBCElectricVehicleScenarioTestCase(FRBCCEMTestCase):
             storage_status,
         )
 
+    async def add_car_plugged_in_triggers(self):
         # Now start charging
         actuator_status = FRBCActuatorStatus(
             message_id=uuid.uuid4(),
@@ -225,6 +238,16 @@ class FRBCElectricVehicleScenarioTestCase(FRBCCEMTestCase):
             storage_status,
         )
 
+    async def generate_tests(self):
+        await super().generate_tests()
+
+        await self.add_initial_triggers()
+
+        # Just wait a little for any unexpected behaviour to happen
+        await self.add_trigger_method(None, wait_time=10)
+
+        await self.add_car_plugged_in_triggers()
+
         power_measurement = PowerMeasurement(
             message_id=uuid.uuid4(),
             measurement_timestamp=current_timezone_time(),
@@ -245,132 +268,25 @@ class FRBCElectricVehicleScenarioTestCase(FRBCCEMTestCase):
         # Wait 10 seconds after receiving instruction
         await self.add_trigger_method(None, wait_time=10)
 
-        await self.add_trigger_method(self.send_power_measurement_using_instructions)
+        # await self.add_trigger_method(self.send_power_measurement_using_instructions)
 
         # await self.add_trigger_method(self.send_revoke_leakage_behaviour)
         # await self.add_trigger_method(self.send_revoke_system_description)
 
-    async def send_power_measurement_using_instructions(self):
-        if self.controller is None:
-            raise ValueError("No controller provided.")
-        instruction = self.controller.instructions.get_active_instruction(
-            current_timezone_time()
-        )
-        power_measurement = PowerMeasurement(
-            message_id=uuid.uuid4(),
-            measurement_timestamp=current_timezone_time(),
-            values=[
-                PowerValue(commodity_quantity=self.commodity_quantity, value=10000)
-            ],
-        )
+    # async def send_power_measurement_using_instructions(self):
+    #     if self.controller is None:
+    #         raise ValueError("No controller provided.")
 
-    async def fold(self):
-        await super().generate_tests()
-        # Putting the tests here allows me to enforce the ordering.
-        await self.add_test_method(
-            "9.6.1 Update System Description (initial)",
-            self.send_frbc_system_description,
-            self.system_description,
-        )
-        dupe_system_description = self.system_description.model_copy()
-        dupe_system_description.message_id = uuid.uuid4()
-        await self.add_test_method(
-            "9.6.1 Update System Description",
-            self.send_frbc_system_description,
-            dupe_system_description,
-        )
-        await self.add_test_method(
-            "9.6.3. Update Leakage Behaviour (Initial)",
-            self.send_leakage_behaviour,
-            self.leakage_behavior,
-        )
-        dupe_leakage_behaviour = self.leakage_behavior.model_copy()
-        dupe_leakage_behaviour.message_id = uuid.uuid4()
-        await self.add_test_method(
-            "9.6.3. Update Leakage Behaviour",
-            self.send_leakage_behaviour,
-            dupe_leakage_behaviour,
-        )
-
-        # Start with not being plugged in.
-        actuator_status = FRBCActuatorStatus(
-            message_id=uuid.uuid4(),
-            actuator_id=self.actuator.id,
-            active_operation_mode_id=self.off_operation_mode.id,
-            operation_mode_factor=0,
-            previous_operation_mode_id=None,
-            transition_timestamp=None,
-        )
-        storage_status = FRBCStorageStatus(
-            message_id=uuid.uuid4(), present_fill_level=0
-        )
-        await self.add_test_method(
-            "Update Actuator Status (Off)",
-            self.send_actuator_status,
-            actuator_status,
-        )
-        await self.add_test_method(
-            "Update Storage Status (Empty - No Car Plugged in)",
-            self.send_storage_status,
-            storage_status,
-        )
-
-        # Now start charging
-        actuator_status = FRBCActuatorStatus(
-            message_id=uuid.uuid4(),
-            actuator_id=self.actuator.id,
-            active_operation_mode_id=self.charging_operation_mode.id,
-            operation_mode_factor=0,
-            previous_operation_mode_id=self.off_operation_mode.id,
-            transition_timestamp=current_timezone_time(),
-        )
-        storage_status = FRBCStorageStatus(
-            message_id=uuid.uuid4(), present_fill_level=50
-        )
-        await self.add_test_method(
-            "Update Actuator Status (Charging)",
-            self.send_actuator_status,
-            actuator_status,
-        )
-        await self.add_test_method(
-            "Update Storage Status (50% - Plugged in)",
-            self.send_storage_status,
-            storage_status,
-        )
-
-        # Send 2 power measurements with 2 seconds in between
-        for i in range(2):
-            power_measurement = PowerMeasurement(
-                message_id=uuid.uuid4(),
-                measurement_timestamp=current_timezone_time(),
-                values=[
-                    PowerValue(commodity_quantity=self.commodity_quantity, value=10000)
-                ],
-            )
-            await self.add_test_method(
-                "Update Power Measurement",
-                self.send_power_measurement,
-                power_measurement,
-                2,
-            )
-
-            self.test_logger.info(
-                f"Waiting {self.config.instruction_wait_timeout} seconds for an instruction.",
-                0,
-            )
-
-            await asyncio.sleep(45)
-            # await self.add_test_method(
-            #     "Wait for instruction",
-            #     self.wait_for_instruction,
-            #     self.config.instruction_wait_timeout,
-            # )
-
-        # Goes at the end since a number of other tests require system description as a precondition.
-        await self.add_test_method(
-            "9.6.2. Revoke System Description",
-            self.send_revoke_system_description,
-        )
+    #     instruction = self.controller.instructions.get_active_instruction(
+    #         current_timezone_time()
+    #     )
+    #     power_measurement = PowerMeasurement(
+    #         message_id=uuid.uuid4(),
+    #         measurement_timestamp=current_timezone_time(),
+    #         values=[
+    #             PowerValue(commodity_quantity=self.commodity_quantity, value=10000)
+    #         ],
+    #     )
 
     async def validate_instruction(self, instruction: FRBCInstruction):
         self.test_logger.info("RECEIVED INSTRUCTION.")
