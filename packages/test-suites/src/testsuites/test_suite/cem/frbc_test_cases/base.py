@@ -114,7 +114,7 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
 
     async def send_frbc_system_description(self):
         # Only send the FRBC System Description once.
-        reception_status = await self.controller.send_frbc_system_description(
+        system_description, reception_status = await self.controller.send_frbc_system_description(
             self.channel
         )
         test_name = "9.6.1 Update System Description"
@@ -125,7 +125,7 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
         await self.add_test_method(
             test_name,
             self.base_message_send_validate,
-            self.controller.system_description,
+            system_description,
             reception_status,
         )
 
@@ -197,7 +197,7 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
             self.channel, actuator_status
         )
         await self.add_test_method(
-            "Update actuator forecast",
+            "Update actuator status",
             self.base_message_send_validate,
             actuator_status,
             reception_status,
@@ -211,7 +211,7 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
         )
 
         await self.add_test_method(
-            "Update actuator forecast",
+            "Update storage status",
             self.base_message_send_validate,
             storage_status,
             reception_status,
@@ -220,18 +220,6 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
     async def send_power_measurement(self, power_measurement: PowerMeasurement):
         self.update_system_description_precondition()
         return await super().send_power_measurement(power_measurement)
-
-    async def send_usage_forecast(self, forecast: FRBCUsageForecast):
-        reception_status = await self.controller.update_frbc_usage_forecast(
-            self.channel, forecast
-        )
-
-        await self.add_test_method(
-            "Update usage forecast",
-            self.base_message_send_validate,
-            forecast,
-            reception_status,
-        )
 
     async def wait_for_instruction(self, wait_time=10):
         try:
@@ -260,7 +248,6 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
             "Receive Instruction", self.validate_instruction, instruction
         )
 
-        await send_okay
         self._received_instruction_event.set()
 
     async def handle_revoke(

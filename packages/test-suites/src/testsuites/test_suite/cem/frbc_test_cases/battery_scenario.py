@@ -53,7 +53,7 @@ CAPACITY_WH: float = 20_000.0
 LEAKAGE_W: float = 0.5
 INITIAL_FILL_LEVEL: float = 0.5
 
-SIMULATION_DURATION = 60
+SIMULATION_DURATION = 20
 
 
 class FRBCBatteryScenarioTestCase(FRBCCEMTestCase):
@@ -85,8 +85,6 @@ class FRBCBatteryScenarioTestCase(FRBCCEMTestCase):
                 ],
             )
         )
-
-        self.message_handlers[FRBCInstruction] = self.handle_instruction
 
         self.fill_level = INITIAL_FILL_LEVEL
 
@@ -341,31 +339,6 @@ class FRBCBatteryScenarioTestCase(FRBCCEMTestCase):
                 )
             ],
         )
-
-    async def handle_instruction(
-        self, instruction: FRBCInstruction, channel: S2Channel, send_okay: Awaitable
-    ):
-        await self.handle_with_original_handler(instruction, channel, send_okay)
-
-        await self.add_trigger_method(
-            self.validate_instruction,
-            instruction,
-        )
-
-        # await self._simulation_started.wait()
-        # self.test_logger.info(f"Received instruction: {instruction}")
-        # if instruction.operation_mode in self.id_to_op_mode:
-        #     self.active_operation_mode = self.id_to_op_mode[instruction.operation_mode]
-        #     self.operation_mode_factor = self.operation_mode_factor
-        #     status_type = InstructionStatus.ACCEPTED
-        # else:
-        #     status_type = InstructionStatus.REJECTED
-        # status = InstructionStatusUpdate(
-        #     instruction_id=instruction.message_id,
-        #     status_type=status_type,
-        #     timestamp=current_timezone_time(),
-        # )
-        # await self.controller.send_instruction_status_update(self.channel, status)
 
     async def validate_instruction(
         self,

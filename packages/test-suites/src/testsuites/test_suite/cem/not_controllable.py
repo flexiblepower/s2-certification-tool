@@ -54,6 +54,7 @@ class NotControllableCEMTestCase(S2TestCase):
     ):
         super().__init__(config, channel, controller, report, logger)
 
+
     def update_resource_manager_details_precondition(
         self, precondition_id: str | None = None
     ):

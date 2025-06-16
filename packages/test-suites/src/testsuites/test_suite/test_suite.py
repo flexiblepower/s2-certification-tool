@@ -374,7 +374,7 @@ class S2TestCase(unittest.TestCase):
             logger.info("Starting test case: %s", self.__class__.__name__)
 
             if self.triggers.empty():
-                await self.add_trigger_method(None, 30)
+                await self.add_trigger_method(None, wait_time=30)
 
             # Run the test loop until the triggers task is complete.
             while not self._triggers_complete_event.is_set():

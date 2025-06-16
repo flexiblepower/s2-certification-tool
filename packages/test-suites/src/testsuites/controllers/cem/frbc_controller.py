@@ -167,9 +167,20 @@ class FRBCCEMController(NotControllableCEMController):
     def __init__(self, resource_manager_details: ResourceManagerDetails):
         super().__init__(resource_manager_details)
 
-        self.instructions = InstructionsStore()
+        self.reset_system_description()
 
         self.add_handler(FRBCInstruction, self.handle_instruction)
+
+    def reset_system_description(self):
+        self.leakage_behaviour = None
+        self.usage_forecast = None
+
+        self.actuators = {}
+        self.actuator_status = {}
+
+        self.storage_status = None
+
+        self.instructions = InstructionsStore()
 
     def add_actuator(self, actuator: ActuatorInformation):
         self.actuators[actuator.id] = actuator
