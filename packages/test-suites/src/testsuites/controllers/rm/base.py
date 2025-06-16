@@ -1,6 +1,6 @@
 import uuid
 import asyncio
-from typing import Awaitable
+from typing import Awaitable, Optional
 from s2python.common import (
     ControlType as ProtocolControlType,
     EnergyManagementRole,
@@ -28,6 +28,7 @@ class BaseRMController(Controller):
     role = EnergyManagementRole.CEM
     control_type = ProtocolControlType.NO_SELECTION
 
+    resource_manager_details: Optional[ResourceManagerDetails]
     _resource_manager_details_received: asyncio.Event
 
     def __init__(self):
@@ -66,22 +67,12 @@ class BaseRMController(Controller):
         channel: "S2Channel",
         send_okay: Awaitable,
     ):
+        # Set the variable before before the event so that waiting events are satisfied
         self.resource_manager_details = message
 
         self._resource_manager_details_received.set()
 
         await send_okay
-
-    async def wait_until_rm_details_received(self) -> ResourceManagerDetails:
-        message = await self.message_awaiter.wait_for_message(
-            ResourceManagerDetails, timeout=5
-        )
-        # await self._resource_manager_details_received.wait()
-
-        if type(message) != ResourceManagerDetails:
-            raise ValueError("Expected a Resource Manager details message.")
-
-        return message
 
     async def send_session_request_disconnect(self, channel: "S2Channel"):
         await channel.send_msg_and_await_reception_status(

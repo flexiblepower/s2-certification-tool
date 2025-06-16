@@ -191,50 +191,6 @@ class S2TestCase(unittest.TestCase):
                 # If there wasn't a handler there before then we remove the key
                 del self.controller.handlers[k]
 
-    async def check_receive_message_type(
-        self,
-        message_type: Type[S2Message],
-        timeout=None,
-        not_applicable_if_not_received=False,
-    ):
-        """
-        Checks the list of saved messages in the controller to see if a message of the specified type has arrived.
-        If it hasn't arrived yet it will wait for it until the timeout is reached.
-
-        Args:
-            message_type (Type[S2Message]): The message type to retrieve
-            not_applicable_if_not_received (bool): If true and no matching message found then a NotApplicableTestException raised.
-
-        Returns:
-            _type_: _description_
-        """
-        logger.info("Checking for %s", message_type)
-
-        message = None
-        timeout = self.TIMEOUT if timeout is None else timeout
-        try:
-            messages: list = self.controller.get_received_messages(message_type)
-            if len(messages) < 1:
-                message = await self.controller.message_awaiter.wait_for_message(
-                    message_type, timeout
-                )
-            else:
-                message = messages[0]
-        except asyncio.TimeoutError:
-            message = None
-
-        if message is None:
-            messages: list = self.controller.get_received_messages(message_type)
-            if len(messages) > 0:
-                message = messages[0]
-
-        if message is None and not_applicable_if_not_received:
-            raise NotApplicableTestException(
-                f"No `{message_type.__name__}` received within {timeout} second timeout."
-            )
-
-        return message
-
     def handle_validation_error(self, err: S2ValidationError):
         # TODO: Use this...
         self.test_logger.error(f"Received validation error: {err}")

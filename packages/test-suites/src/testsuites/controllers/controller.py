@@ -3,7 +3,7 @@ import logging
 import asyncio
 import uuid
 from typing import Awaitable, Callable, Optional, Type
-from testsuites.message_handlers import MessageHandler
+from testsuites.message_handlers import S2MessageHandler
 from s2python.common import (
     ControlType as ProtocolControlType,
     PowerForecast,
@@ -26,7 +26,7 @@ from connectivity.s2_channel import S2Channel
 logger = logging.getLogger(__name__)
 
 
-class Controller(MessageHandler):
+class Controller(S2MessageHandler):
     control_type: ProtocolControlType
 
     role: EnergyManagementRole

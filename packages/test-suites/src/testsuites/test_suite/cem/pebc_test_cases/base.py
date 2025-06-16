@@ -229,16 +229,6 @@ class PEBCBaseScenarioTestCase(NotControllableCEMTestCase):
             reception_status,
         )
 
-    async def wait_for_instruction(self, wait_time=10):
-        try:
-            self.test_logger.info(f"Waiting {wait_time} seconds for an instruction...")
-            instruction = await self.controller.message_awaiter.wait_for_message(
-                PEBCInstruction, timeout=wait_time
-            )
-            self.test_logger.info(instruction)
-        except TimeoutError as e:
-            raise NotApplicableTestException("No instruction received.")
-
     def create_power_forecast(
         self, values: list[list[PowerForecastData]]
     ) -> PowerForecast:

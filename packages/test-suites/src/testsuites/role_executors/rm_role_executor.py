@@ -19,6 +19,7 @@ from s2python.message import S2Message
 from testsuites.controllers import (
     BaseRMController,
 )
+from testsuites.util import wait_for_event_or_stop
 from .base_role_executor import (
     ExitMainLoopException,
     TestRoleExecutor,
@@ -122,9 +123,18 @@ class RMTestExecutor(TestRoleExecutor):
         error_message_prefix="Error whilst waiting for RM Details:",
     )
     async def wait_for_rm_details(self):
-        resource_manager_details = (
-            await self.controller.wait_until_rm_details_received()
+        await wait_for_event_or_stop(
+            self.controller._resource_manager_details_received,
+            self._stop_event,
+            timeout=10,
+            description="Resource Manger Details Received Event.",
         )
+        resource_manager_details = self.controller.resource_manager_details
+        if resource_manager_details is None:
+            raise ValueError(
+                "RM Details Received event is set but no resource manager details are present."
+            )
+
         for control_type in resource_manager_details.available_control_types:
             self.available_control_types.add(control_type)
 

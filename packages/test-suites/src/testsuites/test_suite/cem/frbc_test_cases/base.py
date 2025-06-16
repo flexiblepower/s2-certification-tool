@@ -221,15 +221,6 @@ class FRBCCEMTestCase(NotControllableCEMTestCase):
         self.update_system_description_precondition()
         return await super().send_power_measurement(power_measurement)
 
-    async def wait_for_instruction(self, wait_time=10):
-        try:
-            instruction = await self.controller.message_awaiter.wait_for_message(
-                FRBCInstruction, timeout=wait_time
-            )
-            self.test_logger.info(instruction)
-        except TimeoutError as e:
-            raise NotApplicableTestException("No instruction received.")
-
     @abc.abstractmethod
     async def validate_instruction(
         self,
