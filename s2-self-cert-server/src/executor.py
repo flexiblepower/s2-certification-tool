@@ -1,4 +1,5 @@
 from importlib.metadata import version
+import json
 from typing import Optional
 import asyncio
 from connectivity.connection_adapter import ConnectionAdapter
@@ -6,7 +7,7 @@ from testsuites.certification_executor import AbstractCertificationExecutor
 from connectivity.config import Config
 from connectivity.s2_channel import S2Channel
 from testsuites.test_executor import IntegrationTestExecutor, create_test_executor
-from testsuites.certificate.certificate import ComplianceReport
+from testsuites.certificate.certificate import ComplianceReport, Signature
 
 from testsuites.envelope_models import (
     ClientInfoControlMessage,
@@ -21,6 +22,8 @@ from testsuites.test_logger import (
 from connectivity.channel import Channel
 
 import logging
+
+from .certifier import AbstractCertifier
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +77,16 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
 
     test_executor: IntegrationTestExecutor
 
+    certifier: AbstractCertifier
     report: ComplianceReport
 
-    def __init__(self):
+    def __init__(self, certifier):
         super().__init__()
 
         self._config_received_event = asyncio.Event()
         self._client_info_received_event = asyncio.Event()
+
+        self.certifier = certifier
 
         self.add_handler(ConfigControlMessage, self.handle_config_message)
         self.add_handler(ClientInfoControlMessage, self.handle_client_info)
@@ -140,14 +146,16 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
 
         logger.info("Test suite complete!")
 
-        report = await self.test_executor.get_compliance_report()
+        report = await self.get_compliance_report()
 
         logger.info("Sending report")
 
-        if report is not None:
-            report.signature = "TEST SERVER SIGNATURE"
+        if report is not None and self.certifier is not None:
+            report = self.certifier.sign_certificate(report)
 
             await self.send_report(report)
+
+            logger.info("Certificate: %s", json.dumps(report.model_dump(), indent=2, default=str))
 
             logger.info("Report sent. Exiting Main Loop.")
         else:
@@ -174,4 +182,4 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
         return await super().run(s2_channel_mock, server_channel, *args, **kwargs)
 
     async def get_compliance_report(self):
-        return self.test_executor.report
+        return await self.test_executor.get_compliance_report()

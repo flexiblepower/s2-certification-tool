@@ -20,6 +20,8 @@ from testsuites.test_suite.test_suite import AbstractTestLogger, TestLoggerLevel
 
 
 from connectivity.channel import Channel
+
+from .certifier import MockCertifier
 from .executor import ServerSideCertificationExecutor
 
 
@@ -31,6 +33,8 @@ logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+certifier_class = MockCertifier
 
 
 @app.post("/certificate/verify")
@@ -55,9 +59,11 @@ async def connect_tester(websocket: WebSocket):
 
     # The communication channel used to send and receive messages to the client via the above connection.
     server_channel = ServerWebsocketConnectionChannel(connection)
+    
+    certifier = certifier_class()
 
     # The central part! This is what coordinated the execution and the test suit and certification.
-    executor = ServerSideCertificationExecutor()
+    executor = ServerSideCertificationExecutor(certifier)
 
     await executor.run(server_channel)
 

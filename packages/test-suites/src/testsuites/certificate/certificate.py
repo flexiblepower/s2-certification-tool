@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Type
 from enum import Enum
 
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, field_serializer, field_validator
 import yaml
 from connectivity.config import DeviceDetails
 
@@ -33,6 +33,14 @@ class TestResult(BaseModel):
     def serializer_status(self, status: TestResultStatus):
         return status.name
 
+    @field_validator("status", mode="before")
+    @classmethod
+    def deserialize_status(cls, status):
+        if isinstance(status, TestResultStatus):
+            return status
+        return TestResultStatus[status]
+
+
 
 class TestSuiteResults(BaseModel):
     name: str
@@ -60,13 +68,33 @@ class TestSuiteResults(BaseModel):
     def serializer_status(self, status: TestResultStatus):
         return status.name
 
-    @field_serializer("control_type")
-    def serializer_control_type(self, control_type: ProtocolControlType):
-        return control_type.name
+    @field_validator("status", mode="before")
+    @classmethod
+    def deserialize_status(cls, status):
+        if isinstance(status, TestResultStatus):
+            return status
+        return TestResultStatus[status]
 
-    @field_serializer("tests")
-    def serializer_tests(self, tests: Dict[str, TestResult]):
-        return list(tests.values())
+    @field_serializer("control_type")
+    def serializer_control_type(self, control_type: Optional[ProtocolControlType]):
+        if control_type is None:
+            return None
+        return control_type.name
+    
+
+    @field_validator("control_type", mode="before")
+    @classmethod
+    def deserialize_control_type(cls, control_type : Optional[str | ProtocolControlType]):
+        if control_type is None:
+            return None
+
+        if isinstance(control_type, ProtocolControlType):
+            return control_type
+        return ProtocolControlType[control_type]
+
+    # @field_serializer("tests")
+    # def serializer_tests(self, tests: Dict[str, TestResult]):
+        # return list(tests.values())
 
     @property
     def count_passed(self, include_soft_fail=False):
@@ -114,11 +142,15 @@ class TestSuiteResults(BaseModel):
         return dump
 
 
+class Signature(BaseModel):
+    server_signature: str
+
+
 class ComplianceReport(BaseModel):
     timestamp: datetime = datetime.now()
     test_suites: List[TestSuiteResults] = []
     device: Optional[DeviceDetails]
-    signature: Optional[str] = None
+    signature: Optional[Signature] = None
 
     def add_test_suite_result(self, result: TestSuiteResults):
         self.test_suites.append(result)

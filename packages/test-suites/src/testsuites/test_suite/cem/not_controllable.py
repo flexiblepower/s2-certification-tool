@@ -54,6 +54,8 @@ class NotControllableCEMTestCase(S2TestCase):
     ):
         super().__init__(config, channel, controller, report, logger)
 
+    async def generate_tests(self):
+        await self.add_trigger_method(None, wait_time=5)
 
     def update_resource_manager_details_precondition(
         self, precondition_id: str | None = None
