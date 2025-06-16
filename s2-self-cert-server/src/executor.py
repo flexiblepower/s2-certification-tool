@@ -23,7 +23,7 @@ from connectivity.channel import Channel
 
 import logging
 
-from .certifier import AbstractCertifier
+from .certifier import ServerSideCertificationHandler
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,6 @@ class MockChannel(Channel[str, str]):
     connection: MockConnectionAdapter
 
     async def send(self, message: str):
-        # logger.info("S2 Message: %s", message)
         await self.connection.put_incoming(message)
 
     async def receive(self) -> str:
@@ -76,17 +75,15 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
     _client_info_received_event: asyncio.Event
 
     test_executor: IntegrationTestExecutor
+    certification_handler: ServerSideCertificationHandler
 
-    certifier: AbstractCertifier
     report: ComplianceReport
 
-    def __init__(self, certifier):
-        super().__init__()
+    def __init__(self, certification_handler):
+        super().__init__(certification_handler)
 
         self._config_received_event = asyncio.Event()
         self._client_info_received_event = asyncio.Event()
-
-        self.certifier = certifier
 
         self.add_handler(ConfigControlMessage, self.handle_config_message)
         self.add_handler(ClientInfoControlMessage, self.handle_client_info)
@@ -150,12 +147,15 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
 
         logger.info("Sending report")
 
-        if report is not None and self.certifier is not None:
-            report = self.certifier.sign_certificate(report)
+        if report is not None and self.certification_handler is not None:
+            report = self.certification_handler.exec_signing_process(report)
 
             await self.send_report(report)
 
-            logger.info("Certificate: %s", json.dumps(report.model_dump(), indent=2, default=str))
+            logger.info(
+                "Certificate: %s",
+                json.dumps(report.model_dump(), indent=2, default=str),
+            )
 
             logger.info("Report sent. Exiting Main Loop.")
         else:

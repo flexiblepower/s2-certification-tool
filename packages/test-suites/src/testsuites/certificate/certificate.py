@@ -41,7 +41,6 @@ class TestResult(BaseModel):
         return TestResultStatus[status]
 
 
-
 class TestSuiteResults(BaseModel):
     name: str
     control_type: Optional[ProtocolControlType] = None
@@ -80,21 +79,18 @@ class TestSuiteResults(BaseModel):
         if control_type is None:
             return None
         return control_type.name
-    
 
     @field_validator("control_type", mode="before")
     @classmethod
-    def deserialize_control_type(cls, control_type : Optional[str | ProtocolControlType]):
+    def deserialize_control_type(
+        cls, control_type: Optional[str | ProtocolControlType]
+    ):
         if control_type is None:
             return None
 
         if isinstance(control_type, ProtocolControlType):
             return control_type
         return ProtocolControlType[control_type]
-
-    # @field_serializer("tests")
-    # def serializer_tests(self, tests: Dict[str, TestResult]):
-        # return list(tests.values())
 
     @property
     def count_passed(self, include_soft_fail=False):

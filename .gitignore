@@ -8,3 +8,4 @@ cert*.yaml
 **/*.egg-info
 report.*
 !report.example.*
+**.pem

@@ -9,9 +9,17 @@ dependencies = [
     "python-multipart>=0.0.20",
     "connectivity",
     "test-suites",
+    "cryptography>=45.0.4",
+    "pytest-asyncio>=1.0.0",
 ]
 
 
 [tool.uv.sources]
 test-suites = { path = "../packages/test-suites", editable = true }
 connectivity = { path = "../packages/connectivity", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.0",
+    "pytest-mock>=3.14.1",
+]

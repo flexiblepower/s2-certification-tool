@@ -14,6 +14,7 @@ from connectivity.async_task_manager import AsyncTaskManager
 
 from connectivity.config import Config
 from connectivity.channel import Channel
+from testsuites.message_handlers import ControlMessageHandler
 from s2python.message import S2Message
 from testsuites.certificate.certificate import ComplianceReport
 from testsuites.test_logger import AbstractTestLogger
@@ -24,13 +25,13 @@ from testsuites.envelope_models import (
     LogMessageEnvelope,
     ControlMessage,
     ControlMessageEnvelope,
+    CertificationEnvelope,
+    CertificationMessage,
 )
+from testsuites.message_handlers import CertificationMessageHandler
 
 from connectivity.connection_adapter import (
-    ConnectionAdapter,
     ConnectionClosed,
-    ConnectionError,
-    ConnectionProtocolError,
 )
 
 import logging
@@ -47,37 +48,7 @@ class MessageHandlerNotFoundError(Exception):
     pass
 
 
-class MessageHandler(Generic[T]):
-    handlers: Dict[Type[T], Callable]
-    _accept_unhandled_messages: bool = True
-
-    def __init__(self):
-        self.handlers: Dict[Type[T], Callable] = {}
-
-    def add_handler(self, msg_type: Type[T], handler: Callable):
-        self.handlers[msg_type] = handler
-
-    async def handle_message(self, message: T, *args, **kwargs):
-        try:
-            handler = self.handlers[type(message)]
-            result = await handler(message, *args, **kwargs)  # type: ignore
-            return result
-        except KeyError:
-            if self._accept_unhandled_messages:
-                return
-            else:
-                raise MessageHandlerNotFoundError(
-                    f"Command does not exist for message type '{getattr(message, 'message_type', type(message))}'"
-                )
-
-
-class ControlMessageHandler(MessageHandler[ControlMessage]):
-
-    def __init__(self):
-        super().__init__()
-
-
-class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMessage]):
+class AbstractCertificationExecutor(AbstractExecutor, ControlMessageHandler):
 
     s2_channel: Channel[str, str]
     server_channel: Channel[ServerMessageEnvelope, str]
@@ -88,17 +59,23 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
 
     test_logger: AbstractTestLogger
 
-    def __init__(self):
+    certification_handler: CertificationMessageHandler
+
+    def __init__(self, certification_handler: CertificationMessageHandler):
         super().__init__()
 
         # ! Control message handlers
         self.handlers: Dict[Type[ControlMessage], Callable] = {}
+
+        self.certification_handler = certification_handler
 
         self._stop_event = asyncio.Event()
 
         self.running = False
 
     async def main_loop(self):
+        """This is the main execution task of the certification executor. This should coordinate all the other tasks. 
+        Once this function exits it will cause all other tasks to exist."""
         logger.info("Starting Main Loop.")
         if self.s2_channel is None or self.server_channel:
             raise ValueError("Channel not set.")
@@ -106,8 +83,13 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
     async def handle_control_message(self, message: ControlMessage):
         await self.handle_message(message)
 
+    @abc.abstractmethod
     async def handle_log_message(self, message: LogMessage):
-        logger.info(message.message)
+        # logger.info(message.message)
+        pass
+
+    async def handle_certification_message(self, message: CertificationMessage):
+        await self.certification_handler.handle_message(message, self.server_channel)
 
     async def process_server_message(self, message: ServerMessageEnvelope):
         if type(message) == S2MessageEnvelope:
@@ -116,6 +98,8 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
             await self.handle_log_message(message.message)
         elif type(message) == ControlMessageEnvelope:
             await self.handle_control_message(message.message)
+        elif (type(message)) == CertificationEnvelope:
+            await self.handle_certification_message(message.message)
 
     async def process_rm_message(self, message: str):
         envelope = S2MessageEnvelope(message=message)
@@ -183,17 +167,23 @@ class AbstractCertificationExecutor(AbstractExecutor, MessageHandler[ControlMess
         self.server_channel = server_channel
 
     def create_tasks(self, tg: asyncio.TaskGroup):
+        # This is the main execution of this class. It does the setup and then the test executor will run on this thread
         tg.create_task(self.main_loop(), name="MainLoop")
 
         tg.create_task(self.s2_channel.run(), name="S2ChannelRun")
+
+        # This is the channel that receives messages from the local certifier on the dev's device
         tg.create_task(self.server_channel.run(), name="ServerChannelRun")
 
+        # This task processes messages popped off the outgoing message queue form the integration test executor
         tg.create_task(
             self.process_received_message(
                 self.get_next_s2_channel_message, self.process_rm_message
             ),
             name="ProcessRMMessages",
         )
+
+        # This task processes messages popped off the incoming message queue form the local certifier on the dev's machine
         tg.create_task(
             self.process_received_message(
                 self.server_channel.get_next_message, self.process_server_message

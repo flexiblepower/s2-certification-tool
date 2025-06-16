@@ -116,8 +116,8 @@ class S2WebSocketClient(S2WebSocketBase):
     async def start(self):
         loop = asyncio.get_event_loop()
 
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
+        # for sig in (signal.SIGINT, signal.SIGTERM):
+        #     loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
 
         logger.info(f"Connection to Websocket server at {self.config.uri}")
         async with connect(self.config.uri) as websocket:

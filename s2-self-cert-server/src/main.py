@@ -13,15 +13,13 @@ from connectivity.config import Config
 from testsuites.server_websocket_envelope_channel import (
     ServerWebsocketConnectionChannel,
 )
-from connectivity.s2_channel import S2Channel
-from testsuites.test_executor import IntegrationTestExecutor, create_test_executor
-from testsuites.certificate.certificate import ComplianceReport
-from testsuites.test_suite.test_suite import AbstractTestLogger, TestLoggerLevel
 
-
-from connectivity.channel import Channel
-
-from .certifier import MockCertifier
+from testsuites.certificate.signature import SimpleCertifier
+from .certifier import (
+    KeyRepository,
+    ServerSideCertificationHandler,
+    TextFileKeyRepository,
+)
 from .executor import ServerSideCertificationExecutor
 
 
@@ -34,7 +32,12 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-certifier_class = MockCertifier
+# Used to sign and verify things with the server's public key.
+signer = SimpleCertifier("./server_key.pem")
+
+# The place where the public keys for the organisations are stored.
+# Creates a relationship between a given organisation and their public key.
+public_key_repository: KeyRepository = TextFileKeyRepository()
 
 
 @app.post("/certificate/verify")
@@ -59,8 +62,10 @@ async def connect_tester(websocket: WebSocket):
 
     # The communication channel used to send and receive messages to the client via the above connection.
     server_channel = ServerWebsocketConnectionChannel(connection)
-    
-    certifier = certifier_class()
+
+    certifier = ServerSideCertificationHandler(
+        key_repository=public_key_repository, signer=signer
+    )
 
     # The central part! This is what coordinated the execution and the test suit and certification.
     executor = ServerSideCertificationExecutor(certifier)

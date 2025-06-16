@@ -10,6 +10,7 @@ from testsuites.server_websocket_envelope_channel import (
 )
 from testsuites.certification_executor import AbstractCertificationExecutor
 from connectivity.config import Config
+from s2selfcert.certifier import ClientSideCertifier
 from s2selfcert.ws_adapter import WebSocketConnectionAdapter
 
 
@@ -39,8 +40,15 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
 
     _received_report_event: asyncio.Event
 
-    def __init__(self, config: Config, test_logger: AbstractTestLogger):
-        super().__init__()
+    certification_handler: ClientSideCertifier
+
+    def __init__(
+        self,
+        config: Config,
+        test_logger: AbstractTestLogger,
+        certification_handler: ClientSideCertifier,
+    ):
+        super().__init__(certification_handler)
 
         self.config = config
         self.test_logger = test_logger
@@ -101,6 +109,21 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
 
         await self.send_client_info_message()
         await self.send_server_control_message(ConfigControlMessage(config=self.config))
+
+        await self.certification_handler.send_key_registration_request(
+            self.server_channel
+        )
+
+        await wait_for_event_or_stop(
+            self.certification_handler._challenge_complete_event,
+            self._stop_event,
+            description="Received Report Event",
+        )
+
+        # exit if the challenge failed since it was invalid. Done from other side as well.
+        if not self.certification_handler.challenge_status:
+            logger.info("Invalid certificate challenge.")
+            return
 
         logger.info("Config sent.")
 
