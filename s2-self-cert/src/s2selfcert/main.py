@@ -15,7 +15,7 @@ from s2selfcert.server_side_certification_orchestrator import CertificationTestE
 from testsuites.certification_executor import AbstractCertificationExecutor
 from testsuites.test_executor import create_test_executor
 from testsuites.test_suite import TestLogger
-from testsuites.certificate.signature import SimpleCertifier
+from testsuites.certificate.signature import SimpleCertifier, ClientReportSigner
 
 parser = argparse.ArgumentParser(prog="S2 Self Cert")
 parser.add_argument("config")
@@ -34,7 +34,7 @@ def create_server_certification_executor(
     config: Config, test_logger: TestLogger
 ) -> CertificationTestExecutor:
     # openssl genpkey -algorithm RSA -out server_key.pem -pkeyopt rsa_keygen_bits:2048
-    signer = SimpleCertifier("./org_key.pem")
+    signer = ClientReportSigner("./org_key.pem")
     certification_handler = ClientSideCertifier("something", signer)
     return CertificationTestExecutor(config, test_logger, certification_handler)
 
@@ -48,6 +48,7 @@ class OnCompleteCallback:
         self.config = config
 
     async def __call__(self, executor: AbstractCertificationExecutor):
+        logger.info("callback executed.")
         report = await executor.get_compliance_report()
         report.export(self.config.report)
 

@@ -1,9 +1,11 @@
 import abc
 import asyncio
 import base64
+from datetime import datetime
+import json
 import os
 from typing import Optional
-from testsuites.certificate.certificate import ComplianceReport, Signature
+from testsuites.certificate.certificate import ComplianceReport
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.exceptions import InvalidSignature
@@ -17,7 +19,6 @@ from testsuites.envelope_models import (
     KeyRegistrationRequestMessage,
     ChallengeMessage,
     ChallengeProofMessage,
-    ChallengeStatusMessage,
     CertificationMessage,
     parse_certification_message,
 )
@@ -25,6 +26,19 @@ from testsuites.envelope_models import (
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class CertificationEncoder:
+    # Centralize encoding and decoding from bytes to allow for it to be changed later
+    # Currently uses Base 64
+
+    @classmethod
+    def encode(cls, data: bytes) -> str:
+        return base64.b64encode(data).decode("ascii")
+
+    @classmethod
+    def decode(cls, data: str) -> bytes:
+        return base64.b64decode(data)
 
 
 class SimpleCertifier:
@@ -44,7 +58,6 @@ class SimpleCertifier:
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo,
         )
-
         return pem_bytes
 
     def load_key(self, key_path: str, key_pass: Optional[bytes] = None):
@@ -94,47 +107,126 @@ class SimpleCertifier:
 class ReportSigner(SimpleCertifier):
 
     def get_bytes_to_sign(self, report: ComplianceReport) -> bytes:
-        report_copy = report.model_copy()
-
-        # Remove signature in the case of verifying
-        if report_copy.signature is not None:
-            report_copy.signature = None
-
-        report_dict = report_copy.generate_certificate_dict()
+        report_dict = report.generate_certificate_dict()
         yaml_bytes = yaml.dump(report_dict, sort_keys=True).encode("utf-8")
 
         return yaml_bytes
 
-    def generate_report_signature(self, report: ComplianceReport) -> Signature:
+    def generate_report_signature(self, report: ComplianceReport) -> str:
         yaml_bytes = self.get_bytes_to_sign(report)
 
         signature = self.sign_bytes(yaml_bytes)
 
-        report_signature = Signature(server_signature=signature.hex())
+        return CertificationEncoder.encode(signature)
 
-        return report_signature
+    def verify(self, report: ComplianceReport, signature: str, public_key=None) -> bool:
+        yaml_bytes = self.get_bytes_to_sign(report)
+        signature_bytes = CertificationEncoder.decode(signature)
+
+        return self.verify_bytes(signature_bytes, yaml_bytes, public_key=public_key)
+
+    def verify_client_signed(
+        self, report: ComplianceReport, client_id: str, client_public_key=None
+    ) -> bool:
+        logger.info(client_public_key)
+        report_copy = report.model_copy(deep=True)
+        if report_copy.signature.client_signature is None:
+            return False
+
+        if report_copy.signature.client_id != client_id:
+            return False
+
+        client_signature = report_copy.signature.client_signature
+
+        # Clear it so that the certificate will be correct
+        report_copy.signature.client_signature = None
+        report_copy.signature.server_signature = None
+        report_copy.signature.server_signature_timestamp = None
+
+        result = self.verify(report_copy, client_signature, client_public_key)
+        logger.info("Signature Verify Result: %s;\n%s", result, report_copy)
+        return result
+    
+    def verify_double_signed(
+        self, report: ComplianceReport, client_id: str, client_public_key=None
+    ) -> bool:
+        """Verifies that the report is double signed by both the server and the client certificate."""
+        report_copy = report.model_copy(deep=True)
+        if (
+            report_copy.signature.client_signature is None
+            or report_copy.signature.server_signature is None
+        ):
+            logger.warning("Both signatures must be present to verify double signed.")
+            return False
+
+        if report_copy.signature.client_id != client_id:
+            logger.warning("Client IDs don't match.")
+            return False
+
+        server_signature = report_copy.signature.server_signature
+        report_copy.signature.server_signature = None
+
+        logger.info("Verifying server signature...")
+
+        server_signature_valid = self.verify(
+            report_copy, server_signature, self.get_public_key()
+        )
+
+        if not server_signature_valid:
+            logger.warning("Server signature is not valid.")
+            return False
+        logger.warning("Server signature is valid. Verifying client signature...")
+
+        client_signature_valid = self.verify_client_signed(report_copy, client_id, client_public_key)
+
+        if not client_signature_valid:
+            logger.warning("Client signature is not valid.")
+        return client_signature_valid
+
+
+class ClientReportSigner(ReportSigner):
 
     def sign_report(self, report: ComplianceReport):
-        report.signature = self.generate_report_signature(report)
+        """Single Signs the report with the client key"""
+        report.signature.server_signature = None
+        report.signature.server_signature_timestamp = None
+        report.signature.client_signature = None
+
+        if report.signature.client_id is None:
+            raise ValueError("Client ID must be included in the signature.")
+
+        # Include the datatime in the content to be signed
+        report.signature.client_signature_timestamp = datetime.now()
+        report.signature.client_signature = self.generate_report_signature(report)
+
         return report
 
-    def verify_signature(self, report: ComplianceReport) -> bool:
 
-        if report.signature is None or report.signature.server_signature is None:
-            raise ValueError("No signature to verify.")
+class ServerReportSigner(ReportSigner):
 
-        yaml_bytes = self.get_bytes_to_sign(report)
-        signature = bytes.fromhex(report.signature.server_signature)
+    def sign_report(self, report: ComplianceReport, client_id: str):
+        """Double signs a report, provided that it's already been signed by the client."""
 
-        return self.verify_bytes(signature, yaml_bytes)
+        logger.info(
+            "%s; %s; %s; %s",
+            report.signature.client_signature,
+            report.signature.client_signature_timestamp,
+            report.signature.client_id,
+            report.signature.client_id != client_id,
+        )
+        if (
+            report.signature.client_signature is None
+            or report.signature.client_signature_timestamp is None
+            or report.signature.client_id is None
+            or report.signature.client_id != client_id
+        ):
+            raise ValueError(
+                "Report must first be signed by the client and the client IDs must match.."
+            )
 
+        report.signature.server_signature = None
+        report.signature.server_signature_timestamp = datetime.now()
 
-class CertificationEncoder:
+        report.signature.server_signature = self.generate_report_signature(report)
 
-    @classmethod
-    def encode(cls, data: bytes) -> str:
-        return base64.b64encode(data).decode("ascii")
-
-    @classmethod
-    def decode(cls, data: str) -> bytes:
-        return base64.b64decode(data)
+        return report

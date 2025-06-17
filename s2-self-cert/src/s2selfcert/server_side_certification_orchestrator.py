@@ -123,15 +123,26 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
         # exit if the challenge failed since it was invalid. Done from other side as well.
         if not self.certification_handler.challenge_status:
             logger.info("Invalid certificate challenge.")
+            await self.stop()
             return
-
-        logger.info("Config sent.")
+        
+        logger.info("Certificate Challenge Complete.")
 
         await wait_for_event_or_stop(
-            self._received_report_event,
+            self.certification_handler._signing_started_event,
             self._stop_event,
             description="Received Report Event",
         )
+
+        logger.info("Testing complete. Signing has started.")
+
+        await wait_for_event_or_stop(
+            self.certification_handler._signing_complete_event,
+            self._stop_event,
+            description="Report Signing Complete Event",
+        )
+
+        logger.info("Singing complete!")
 
     async def run(self, s2_channel, *args, **kwargs):
         server_channel = await self.connect_to_server()
@@ -139,8 +150,16 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
         return await super().run(s2_channel, server_channel, *args, **kwargs)
 
     async def get_compliance_report(self):
-        await self._received_report_event.wait()
-        return self.report
+        if self.certification_handler.signed_certificate is None:
+            # This state shouldn't really happen...
+            logger.info("Certificate is none. Waiting for signing to complete.")
+            await wait_for_event_or_stop(
+                self.certification_handler._signing_complete_event,
+                self._stop_event,
+                description="Report Signing Complete Event",
+            )
+
+        return self.certification_handler.signed_certificate
 
 
 # class ServerSideCertificationOrchestrator(ServerOrchestrator):

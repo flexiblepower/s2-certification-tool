@@ -395,6 +395,9 @@ requires-dist = [
     { name = "websockets", specifier = ">=13.1" },
 ]
 
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.4.0" }]
+
 [[package]]
 name = "typing-extensions"
 version = "4.13.2"

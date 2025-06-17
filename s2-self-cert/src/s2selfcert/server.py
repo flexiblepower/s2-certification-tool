@@ -65,12 +65,9 @@ class S2WebSocketBase:
 
             await self.executor.run(s2_channel)
 
-            logger.info("Exporting Compliance Report.")
-
-            await self.on_complete_callback(self.executor)
-            # if self.executor:
-            #     report = await self.executor.get_compliance_report()
-            #     report.export(self.config.report)
+            logger.info("Executor complete. Running callback.")
+            if self.on_complete_callback is not None:
+                await self.on_complete_callback(self.executor)
 
             logger.info("Connection closed.")
 
@@ -120,8 +117,12 @@ class S2WebSocketClient(S2WebSocketBase):
         #     loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
 
         logger.info(f"Connection to Websocket server at {self.config.uri}")
-        async with connect(self.config.uri) as websocket:
-            await self.start_with_connection(websocket)
+        try:
+            async with connect(self.config.uri) as websocket:
+                await self.start_with_connection(websocket)
+        except OSError:
+            logger.error(f"Failed to connect to WebSocket. Exiting...")
+            return
 
     async def stop(self):
         logger.info("Stopping...")

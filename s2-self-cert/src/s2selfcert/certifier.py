@@ -1,6 +1,7 @@
 import abc
 import asyncio
 import base64
+import json
 import os
 from typing import Optional
 from testsuites.certificate.certificate import ComplianceReport, Signature
@@ -17,7 +18,11 @@ from testsuites.envelope_models import (
     KeyRegistrationRequestMessage,
     ChallengeMessage,
     ChallengeProofMessage,
-    ChallengeStatusMessage,
+    RawCertificateMessage,
+    ClientSignedCertificateMessage,
+    StatusResponseEnum,
+    DoubleSignedCertificateMessage,
+    SignatureStatusResponseCertificateMessage,
     CertificationMessage,
     parse_certification_message,
 )
@@ -25,6 +30,7 @@ from testsuites.certificate.signature import (
     SimpleCertifier,
     ReportSigner,
     CertificationEncoder,
+    ClientReportSigner,
 )
 
 import logging
@@ -34,14 +40,24 @@ logger = logging.getLogger(__name__)
 
 class ClientSideCertifier(CertificationMessageHandler):
 
+    signer: ClientReportSigner
+
     _challenge_request_sent_event: asyncio.Event
     _challenge_proof_sent_event: asyncio.Event
     _challenge_complete_event: asyncio.Event
 
+    _signing_started_event: asyncio.Event
+    _signing_complete_event: asyncio.Event
+
+    signing_valid: Optional[bool] = None
+    signed_certificate: Optional[ComplianceReport] = None
+
     client_id: str
     challenge_status: Optional[bool] = None
 
-    def __init__(self, client_id: str, signer: SimpleCertifier):
+    previous_message: Optional[CertificationMessage] = None
+
+    def __init__(self, client_id: str, signer: ClientReportSigner):
         super().__init__()
 
         self.signer = signer
@@ -51,6 +67,27 @@ class ClientSideCertifier(CertificationMessageHandler):
         self._challenge_proof_sent_event = asyncio.Event()
         self._challenge_complete_event = asyncio.Event()
 
+        self._signing_complete_event = asyncio.Event()
+        self._signing_started_event = asyncio.Event()
+
+        self.add_handler(ChallengeMessage, self.handle_challenge_message)
+        self.add_handler(RawCertificateMessage, self.handle_raw_certificate_message)
+        self.add_handler(
+            DoubleSignedCertificateMessage,
+            self.handle_double_signed_certificate_message,
+        )
+        self.add_handler(
+            SignatureStatusResponseCertificateMessage, self.handle_status_message
+        )
+
+    async def send_message(
+        self,
+        message: CertificationMessage,
+        channel: Channel[ServerMessageEnvelope, str],
+    ):
+        await channel.send(CertificationEnvelope(message=message))
+        self.previous_message = message
+
     async def send_key_registration_request(
         self, channel: Channel[ServerMessageEnvelope, str]
     ):
@@ -58,36 +95,67 @@ class ClientSideCertifier(CertificationMessageHandler):
 
         pub_key_bytes = self.signer.get_serialized_public_key()
 
-        envelope = CertificationEnvelope(
-            message=KeyRegistrationRequestMessage(
-                public_key=CertificationEncoder.encode(pub_key_bytes),
-                client_id=self.client_id,
-            )
+        message = KeyRegistrationRequestMessage(
+            public_key=CertificationEncoder.encode(pub_key_bytes),
+            client_id=self.client_id,
         )
-        await channel.send(envelope)
+        await self.send_message(message, channel)
         self._challenge_request_sent_event.set()
 
     async def handle_challenge_message(
         self, message: ChallengeMessage, channel: Channel[ServerMessageEnvelope, str]
     ):
-        challenge_bytes = base64.b64decode(message.challenge)
+        challenge_bytes = CertificationEncoder.decode(message.challenge)
 
         signature_bytes = self.signer.sign_bytes(challenge_bytes)
 
-        signature = base64.b64encode(signature_bytes)
+        signature = CertificationEncoder.encode(signature_bytes)
 
-        envelope = CertificationEnvelope(
-            message=ChallengeProofMessage(signature=signature)
-        )
-
-        await channel.send(envelope)
+        message = ChallengeProofMessage(signature=signature)
+        await self.send_message(message, channel)
 
         self._challenge_proof_sent_event.set()
 
-    def handle_challenge_status(
+    async def handle_raw_certificate_message(
         self,
-        message: ChallengeStatusMessage,
+        message: RawCertificateMessage,
         channel: Channel[ServerMessageEnvelope, str],
     ):
-        self.challenge_status = message.success
-        self._challenge_complete_event.set()
+        certificate = self.signer.sign_report(message.certificate)
+
+        logger.info(json.dumps(certificate.model_dump(), indent=2, default=str))
+
+        message = ClientSignedCertificateMessage(certificate=certificate)
+
+        await self.send_message(message, channel)
+
+    async def handle_double_signed_certificate_message(
+        self,
+        message: DoubleSignedCertificateMessage,
+        channel: Channel[ServerMessageEnvelope, str],
+    ):
+        self.signing_valid = True
+        self.signed_certificate = message.certificate
+        self._signing_complete_event.set()
+
+    async def handle_status_message(
+        self,
+        message: SignatureStatusResponseCertificateMessage,
+        channel: Channel[ServerMessageEnvelope, str],
+    ):
+        if (
+            self.previous_message.message_type
+            == CertificationMessageType.CHALLENGE_PROOF
+            and message.response_message_type
+            == CertificationMessageType.CHALLENGE_PROOF
+        ):
+            self.challenge_status = message.status == StatusResponseEnum.SUCCESS
+            self._challenge_complete_event.set()
+        elif (
+            self.previous_message.message_type
+            == CertificationMessageType.CLIENT_SIGNED_CERTIFICATE
+            and message.response_message_type
+            == CertificationMessageType.CLIENT_SIGNED_CERTIFICATE
+        ):
+            self.signing_valid = message.status == StatusResponseEnum.SUCCESS
+            self._signing_complete_event.set()

@@ -1,9 +1,9 @@
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 from enum import Enum
 
-from pydantic import BaseModel, field_serializer, field_validator
+from pydantic import BaseModel, field_serializer, field_validator, model_validator, validator
 import yaml
 from connectivity.config import DeviceDetails
 
@@ -137,16 +137,50 @@ class TestSuiteResults(BaseModel):
 
         return dump
 
+    # @model_validator(mode='before')
+    # @classmethod
+    # def validate_tests(cls, data : Any):
+
+    #     if "test" not in data:
+    #         return data
+        
+    #     if isinstance(data["tests"], dict):
+    #         return data
+
+    #     tests = data["tests"]
+    #     data["tests"] = {}
+
+    #     for test in tests:
+    #         data["tests"][test["name"]] = test
+
+    #     return data
+    @model_validator(mode='before')
+    @classmethod
+    def _coerce_tests_list(cls, data: Any) -> Any:
+        # only rewrite if the raw input has a list under "tests"
+        if "tests" not in data or isinstance(data["tests"], dict):
+            return data
+
+        # build a dict[name -> test_payload]
+        tests_list = data["tests"]
+        data["tests"] = { t["name"]: t for t in tests_list }
+        return data
+
 
 class Signature(BaseModel):
-    server_signature: str
+    server_signature: Optional[str] = None
+    server_signature_timestamp: Optional[datetime] = None
+
+    client_id: Optional[str] = None
+    client_signature: Optional[str] = None
+    client_signature_timestamp: Optional[datetime] = None
 
 
 class ComplianceReport(BaseModel):
     timestamp: datetime = datetime.now()
     test_suites: List[TestSuiteResults] = []
     device: Optional[DeviceDetails]
-    signature: Optional[Signature] = None
+    signature: Signature = Signature()
 
     def add_test_suite_result(self, result: TestSuiteResults):
         self.test_suites.append(result)

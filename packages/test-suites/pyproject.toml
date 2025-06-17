@@ -17,3 +17,8 @@ dependencies = [
 s2-python = { path = "../s2-python", editable = true }
 
 connectivity = { path = "../connectivity", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.0",
+]

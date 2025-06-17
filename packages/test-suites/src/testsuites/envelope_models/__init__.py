@@ -15,7 +15,12 @@ from .certification_message import (
     KeyRegistrationRequestMessage,
     ChallengeMessage,
     ChallengeProofMessage,
-    ChallengeStatusMessage,
+    RawCertificateMessage,
+    ClientSignedCertificateMessage,
+    DoubleSignedCertificateMessage,
+    SignatureStatusResponseCertificateMessage,
+    StatusResponseEnum,
+    SignatureException,
     CertificationMessage,
     parse_certification_message,
 )

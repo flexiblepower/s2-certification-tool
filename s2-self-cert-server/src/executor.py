@@ -11,6 +11,7 @@ from testsuites.certificate.certificate import ComplianceReport, Signature
 
 from testsuites.envelope_models import (
     ClientInfoControlMessage,
+    LogMessage,
     ServerMessageEnvelope,
     ControlMessage,
     ConfigControlMessage,
@@ -20,6 +21,7 @@ from testsuites.test_logger import (
     ServerTestLogger,
 )
 from connectivity.channel import Channel
+from testsuites.util import wait_for_event_or_stop
 
 import logging
 
@@ -124,6 +126,9 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
 
         await self.send_server_control_message(message)
 
+    async def handle_log_message(self, message: LogMessage):
+        raise ValueError("Log message cannot be sent to the server!")
+
     async def main_loop(self):
 
         await self._config_received_event.wait()
@@ -145,17 +150,22 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
 
         report = await self.get_compliance_report()
 
-        logger.info("Sending report")
 
+        logger.info("Starting signing process...")
         if report is not None and self.certification_handler is not None:
-            report = self.certification_handler.exec_signing_process(report)
+            report = await self.certification_handler.begin_signing_process(report, self.server_channel)
 
-            await self.send_report(report)
-
-            logger.info(
-                "Certificate: %s",
-                json.dumps(report.model_dump(), indent=2, default=str),
+            await wait_for_event_or_stop(
+                self.certification_handler._certificate_signing_complete,
+                self._stop_event,
             )
+
+            # await self.send_report(report)
+
+            # logger.info(
+            #     "Certificate: %s",
+            #     json.dumps(report.model_dump(), indent=2, default=str),
+            # )
 
             logger.info("Report sent. Exiting Main Loop.")
         else:

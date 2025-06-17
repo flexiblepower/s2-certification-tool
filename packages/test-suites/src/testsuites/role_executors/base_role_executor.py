@@ -123,12 +123,6 @@ class RoleExecutor(abc.ABC):
 
     _stop_event: asyncio.Event
 
-    def __init__(self, controller: Controller) -> None:
-        self.controller = controller
-
-        self._handshake_complete = asyncio.Event()
-        self._main_loop_started_event = asyncio.Event()
-
     async def run(self, channel: S2Channel, stop_event: asyncio.Event, *args, **kwargs):
         self.channel = channel
         self._stop_event = stop_event
