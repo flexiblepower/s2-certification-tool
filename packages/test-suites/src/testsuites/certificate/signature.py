@@ -121,7 +121,6 @@ class ReportSigner(SimpleCertifier):
     def verify_client_signed(
         self, report: ComplianceReport, client_id: str, client_public_key=None
     ) -> bool:
-        logger.info(client_public_key)
         report_copy = report.model_copy(deep=True)
         if report_copy.signature.client_signature is None:
             return False

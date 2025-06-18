@@ -1,15 +1,6 @@
-import abc
 import asyncio
-import base64
-import json
-import os
 from typing import Optional
-from testsuites.certificate.certificate import ComplianceReport, Signature
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.exceptions import InvalidSignature
 from testsuites.message_handlers import CertificationMessageHandler
-import yaml
 from connectivity.channel import Channel
 from testsuites.envelope_models import (
     ServerMessageEnvelope,
@@ -24,14 +15,12 @@ from testsuites.envelope_models import (
     DoubleSignedCertificateMessage,
     SignatureStatusResponseCertificateMessage,
     CertificationMessage,
-    parse_certification_message,
 )
 from testsuites.certificate.signature import (
-    SimpleCertifier,
-    ReportSigner,
     CertificationEncoder,
     ClientReportSigner,
 )
+from testsuites.certificate.certificate import ComplianceReport
 
 import logging
 
@@ -92,8 +81,6 @@ class ClientSideCertifier(CertificationMessageHandler):
     async def send_key_registration_request(
         self, channel: Channel[ServerMessageEnvelope, str]
     ):
-        logger.info("Public Key: %s", self.signer.get_public_key())
-
         pub_key_bytes = self.signer.get_serialized_public_key()
 
         message = KeyRegistrationRequestMessage(
@@ -141,7 +128,7 @@ class ClientSideCertifier(CertificationMessageHandler):
         message: DoubleSignedCertificateMessage,
         channel: Channel[ServerMessageEnvelope, str],
     ):
-        # Receive the certificate which has been signed by both this client and the server. 
+        # Receive the certificate which has been signed by both this client and the server.
         # This is just saved to a variable and can be read by an external class.
 
         self.signing_valid = True

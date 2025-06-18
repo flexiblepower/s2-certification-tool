@@ -9,8 +9,8 @@ services:
       - ${PORT:-8001}:8001
     volumes:
       - ./s2-self-cert-server/data:/app/data
-      # - ./s2-self-cert-server/src:/app/src
-      # - ./packages:/packages
+      - ./s2-self-cert-server/src:/app/src
+      - ./packages:/packages
     environment:
       SERVER_KEY_PATH: "/app/data/server_key.pem"
       KEYS_STORAGE_PATH: "/app/data/keys.json"
