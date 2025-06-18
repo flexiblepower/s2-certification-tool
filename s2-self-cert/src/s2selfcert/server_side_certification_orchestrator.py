@@ -19,12 +19,11 @@ from testsuites.envelope_models import (
     ClientInfo,
     ClientInfoControlMessage,
     ConfigControlMessage,
-    ReportControlMessage,
     ControlMessageEnvelope,
 )
 from testsuites.util import wait_for_event_or_stop
 from testsuites.test_suite import TestLogger
-from testsuites.test_logger import AbstractTestLogger, TestLogger, ServerTestLogger
+from testsuites.test_logger import AbstractTestLogger, TestLogger
 from importlib.metadata import version
 
 
@@ -38,8 +37,6 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
 
     test_logger: TestLogger
 
-    _received_report_event: asyncio.Event
-
     certification_handler: ClientSideCertifier
 
     def __init__(
@@ -52,20 +49,6 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
 
         self.config = config
         self.test_logger = test_logger
-
-        self.add_handler(ReportControlMessage, self.handle_report_control_message)
-
-        self._received_report_event = asyncio.Event()
-
-    async def handle_report_control_message(self, message: ReportControlMessage):
-
-        report: ComplianceReport = message.report
-
-        logger.info("Received report from server: %s", report)
-
-        self.report = report
-
-        self._received_report_event.set()
 
     async def handle_log_message(self, message):
         if message.logger == "test":
@@ -125,7 +108,7 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
             logger.info("Invalid certificate challenge.")
             await self.stop()
             return
-        
+
         logger.info("Certificate Challenge Complete.")
 
         await wait_for_event_or_stop(

@@ -7,7 +7,7 @@ import asyncio
 import logging
 import logging.config
 
-from connectivity.config import Config, load_config
+from connectivity.config import Config, load_config, ConfigError
 from s2selfcert.certifier import ClientSideCertifier
 from s2selfcert.log import get_log_config
 from s2selfcert.server import S2WebSocketClient, S2WebSocketServer
@@ -34,7 +34,10 @@ def create_server_certification_executor(
     config: Config, test_logger: TestLogger
 ) -> CertificationTestExecutor:
     # openssl genpkey -algorithm RSA -out server_key.pem -pkeyopt rsa_keygen_bits:2048
-    signer = ClientReportSigner("./org_key.pem")
+    if config.certification is None:
+        raise ConfigError("Private Key path, Client ID and Certification server URI must be supplied when in certification mode.")
+
+    signer = ClientReportSigner(config.certification.key_path)
     certification_handler = ClientSideCertifier("something", signer)
     return CertificationTestExecutor(config, test_logger, certification_handler)
 
@@ -48,7 +51,7 @@ class OnCompleteCallback:
         self.config = config
 
     async def __call__(self, executor: AbstractCertificationExecutor):
-        logger.info("callback executed.")
+        logger.info("Callback executed.")
         report = await executor.get_compliance_report()
         report.export(self.config.report)
 
@@ -82,7 +85,7 @@ async def run_application(args):
 
     callback = OnCompleteCallback(config)
 
-    # Startup happens in different ways depending on the conneciton omode
+    # Startup happens in different ways depending on the connection code
     # 1. Server will listen on a specified port and host for incoming S2 Device Connections
     # 2. Client will create an outgoing websocket connection to a S2 Device
     if config.connection.mode == "server":
@@ -101,9 +104,6 @@ async def run_application(args):
             config.mode,
         )
         await s2_client.start()
-
-    # report.export()
-
 
 def main():
     args = parser.parse_args()

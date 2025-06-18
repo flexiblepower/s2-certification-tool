@@ -15,7 +15,6 @@ from testsuites.envelope_models import (
     ServerMessageEnvelope,
     ControlMessage,
     ConfigControlMessage,
-    ReportControlMessage,
 )
 from testsuites.test_logger import (
     ServerTestLogger,
@@ -30,7 +29,11 @@ from .certifier import ServerSideCertificationHandler
 logger = logging.getLogger(__name__)
 
 
-class MockConnectionAdapter(ConnectionAdapter):
+class MessageQueueConnectionAdapter(ConnectionAdapter):
+    """This is the connection adapter that is passed to the integration test executor.
+    It is designed to mimic a regular connection adapter using a websocket but is actually
+    receiving S2 messages after they are received in an envelope from the client.
+    """
 
     incoming_queue: asyncio.Queue
     outgoing_queue: asyncio.Queue
@@ -60,12 +63,19 @@ class MockConnectionAdapter(ConnectionAdapter):
 
 
 class MockChannel(Channel[str, str]):
-    connection: MockConnectionAdapter
+    """
+    This channel writes messages sent to the `MessageQueueConnectionAdapter`.
+    For it's current purpose it should only receive JSON serialized S2 messages.
+    """
+
+    connection: MessageQueueConnectionAdapter
 
     async def send(self, message: str):
+        """Writes a message to the incoming queue of the connection adapter."""
         await self.connection.put_incoming(message)
 
     async def receive(self) -> str:
+        """Pops a message off the outgoing message queue of the connection adapter."""
         return await self.connection.get_next_outgoing()
 
 
@@ -76,7 +86,10 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
     _config_received_event: asyncio.Event
     _client_info_received_event: asyncio.Event
 
+    # This executes the tests. Needs to be run on it's own task. Receives and sends messages via the s2_connection_adapter
     test_executor: IntegrationTestExecutor
+
+    # All certification messages are passed to this handler.
     certification_handler: ServerSideCertificationHandler
 
     report: ComplianceReport
@@ -92,10 +105,12 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
 
     async def handle_config_message(self, message: ConfigControlMessage):
         self.config = message.config
-
         self._config_received_event.set()
 
     async def handle_client_info(self, message: ClientInfoControlMessage):
+        """This message contains information about the client software, such as package versions to be checked. 
+        Can be expanded in future to include additional checks.
+        """
 
         connectivity_version = version("connectivity")
         testsuites_version = version("test-suites")
@@ -120,25 +135,22 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
         logger.debug("Control Message: %s", message)
         await self.handle_message(message)
 
-    async def send_report(self, report: ComplianceReport):
-        logger.info("Sending report: %s", report)
-        message = ReportControlMessage(report=report)
-
-        await self.send_server_control_message(message)
-
     async def handle_log_message(self, message: LogMessage):
         raise ValueError("Log message cannot be sent to the server!")
 
     async def main_loop(self):
 
-        await self._config_received_event.wait()
-
-        logger.debug("Config Received.")
+        # Wait until the config is received before setting anything up.
+        await wait_for_event_or_stop(self._config_received_event, self._stop_event, description="Config Received event.")
 
         self.report = ComplianceReport(device=self.config.device_details)
 
+        # Use the standard setup method for the executor. This is the same one used on the client.
+        # Guarantees that the testing is as close to identical as possible.
         self.test_executor = create_test_executor(self.config, self.test_logger)
 
+        # Setup the S2Channel which the executor uses. We are giving it a message queue conn. adapter
+        # so that we can write messages to it
         s2_channel = S2Channel(self.s2_connection_adapter)
 
         try:
@@ -150,22 +162,16 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
 
         report = await self.get_compliance_report()
 
-
         logger.info("Starting signing process...")
         if report is not None and self.certification_handler is not None:
-            report = await self.certification_handler.begin_signing_process(report, self.server_channel)
+            report = await self.certification_handler.begin_signing_process(
+                report, self.server_channel
+            )
 
             await wait_for_event_or_stop(
                 self.certification_handler._certificate_signing_complete,
                 self._stop_event,
             )
-
-            # await self.send_report(report)
-
-            # logger.info(
-            #     "Certificate: %s",
-            #     json.dumps(report.model_dump(), indent=2, default=str),
-            # )
 
             logger.info("Report sent. Exiting Main Loop.")
         else:
@@ -187,7 +193,7 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
         else:
             raise ValueError("Server Channel is not set.")
 
-        self.s2_connection_adapter = MockConnectionAdapter()
+        self.s2_connection_adapter = MessageQueueConnectionAdapter()
         s2_channel_mock = MockChannel(self.s2_connection_adapter)
         return await super().run(s2_channel_mock, server_channel, *args, **kwargs)
 

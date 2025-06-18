@@ -29,7 +29,6 @@ from .control_message import (
     ClientInfo,
     ClientInfoControlMessage,
     ConfigControlMessage,
-    ReportControlMessage,
     ControlMessage,
     parse_control_message,
 )

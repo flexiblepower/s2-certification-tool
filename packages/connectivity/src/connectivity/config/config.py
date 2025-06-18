@@ -11,6 +11,10 @@ from .rm import ControlTypeRMTestConfig
 logger = logging.getLogger(__name__)
 
 
+class ConfigError(Exception):
+    """Raised when there is a configuration missing or a misconfiguration for the attempted state."""
+
+
 class DeviceDetails(BaseModel):
     name: str
     manufacturer: str
@@ -35,6 +39,8 @@ class ConnectionConfig(BaseModel):
 
 class CertificationConfig(BaseModel):
     uri: str
+    key_path: str
+    client_id: str
 
 
 class ReportConfig(BaseModel):

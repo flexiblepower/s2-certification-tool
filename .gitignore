@@ -9,3 +9,6 @@ cert*.yaml
 report.*
 !report.example.*
 **.pem
+
+# The default location for the keys JSON file
+s2-self-cert-server/data

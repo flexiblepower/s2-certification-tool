@@ -45,13 +45,13 @@ logger = logging.getLogger(__name__)
 
 
 class KeyRepository(abc.ABC):
+    """Abstract key repository that is used to store the public keys registered by organisations who wish to certify their S2 Implementations."""
 
     @abc.abstractmethod
     def store_key(self, client_id: str, public_key: str):
         """
         Store a public key and it's associated client_id
         """
-
 
     @abc.abstractmethod
     def get_key(self, client_id: str) -> Optional[str]:
@@ -63,7 +63,7 @@ class KeyRepository(abc.ABC):
 
 class TextFileKeyRepository(KeyRepository):
     """
-    A KeyRepository that persists client public keys in a JSON file.
+    A KeyRepository that persists client public keys in a JSON text file.
     """
 
     def __init__(self, file_path: Union[str, Path]):
@@ -80,6 +80,7 @@ class TextFileKeyRepository(KeyRepository):
 
         with self._lock:
             # Read existing data
+            # TODO: This could be problematic if the file gets large.
             try:
                 content = self.file_path.read_text(encoding="utf-8")
                 data = json.loads(content)
@@ -94,7 +95,7 @@ class TextFileKeyRepository(KeyRepository):
             with tmp_path.open("w", encoding="utf-8") as tf:
                 json.dump(data, tf, indent=2)
                 tf.flush()
-            tmp_path.replace(self.file_path)       
+            tmp_path.replace(self.file_path)
 
     def get_key(self, client_id: str) -> Optional[str]:
         """
@@ -111,6 +112,7 @@ class TextFileKeyRepository(KeyRepository):
                 return None
 
             return data.get(client_id)
+
 
 class ServerSideCertificationHandler(CertificationMessageHandler):
 
@@ -259,7 +261,9 @@ class ServerSideCertificationHandler(CertificationMessageHandler):
         report = message.certificate
 
         # Verify that the client signature is valid given the key provided at the start
-        if not self.signer.verify_client_signed(report, self.client_id, self.client_public_key):
+        if not self.signer.verify_client_signed(
+            report, self.client_id, self.client_public_key
+        ):
             logger.info("Signature not valid. Sending ERROR response.")
             envelope = CertificationEnvelope(
                 message=SignatureStatusResponseCertificateMessage(

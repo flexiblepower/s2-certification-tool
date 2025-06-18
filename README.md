@@ -56,7 +56,7 @@ git submodule init
 git submodule update --remote --merge
 ```
 
-TODO: Remove this once the S2Python package is updated
+> TODO: Remove this once the S2Python package is updated
 
 ---
 
@@ -73,6 +73,14 @@ cd s2-self-cert
 uv run src/s2selfcert/main.py config.yaml -l messages.log
 ```
 
+When running in certification mode you need to connect to an instance of the certification server and also provide a private key in the PEM format which can be used for signing the certificate. The certificate is double signed by both the client (you) and the server. You can generate a new key with:
+
+```bash
+openssl genpkey -algorithm RSA -out org_key.pem -pkeyopt rsa_keygen_bits:2048
+```
+
+This will create a key called `org_key.pem`. Put this into your configuration file using a relative path from where you run the program or a direct path.
+
 ### Configuration
 
 The tool uses a YAML configuration file to define the parameters for testing and certification. Below is an example configuration file and an explanation of its fields.
@@ -87,7 +95,9 @@ device_details:
 mode: testing  # Options: 'testing' for local testing, 'certification' for Certify Mode
 
 certification:
+  client_id: "Your Org Name" # The name of the organisation requesting the certificate. Included in the cert.
   uri: ws://localhost:8001/  # WebSocket URI for the Certification Server
+  key_path: ./org_key.pem # The key used for double signing of the certificate 
 
 connection:
   mode: server  # Options: 'server' or 'client'

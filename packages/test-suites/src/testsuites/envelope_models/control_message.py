@@ -34,18 +34,12 @@ class ConfigControlMessage(BaseModel):
     config: Config
 
 
-class ReportControlMessage(BaseModel):
-    message_type: ControlMessageType = ControlMessageType.REPORT
-    report: ComplianceReport
-
-
 ControlMessage = Union[
-    ConfigControlMessage, ClientInfoControlMessage, ReportControlMessage
+    ConfigControlMessage, ClientInfoControlMessage
 ]
 
 control_types_dict: Dict[ControlMessageType, Type[ControlMessage]] = {  # type: ignore
     ControlMessageType.CONFIG: ConfigControlMessage,
-    ControlMessageType.REPORT: ReportControlMessage,
     ControlMessageType.CLIENT_INFO: ClientInfoControlMessage,
 }
 
