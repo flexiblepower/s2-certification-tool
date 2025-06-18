@@ -276,7 +276,6 @@ class ServerSideCertificationHandler(CertificationMessageHandler):
 
         logger.info("Signature is valid. Double Signing with server key.")
         # Sign the report with the server certificate. Client signature is included in the body - double signed
-        logger.info(json.dumps(report.model_dump(), indent=2, default=str))
         report = self.signer.sign_report(report, self.client_id)
 
         # Send the double signed report back to the client.

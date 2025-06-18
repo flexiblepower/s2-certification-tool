@@ -9,4 +9,5 @@ from .config import (
     RoleTestConfig,
     DeviceDetails,
     load_config,
+    ConfigError
 )

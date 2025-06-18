@@ -1,27 +1,12 @@
-import abc
-import asyncio
 import base64
 from datetime import datetime
-import json
 import os
 from typing import Optional
 from testsuites.certificate.certificate import ComplianceReport
 from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.exceptions import InvalidSignature
-from testsuites.message_handlers import CertificationMessageHandler
 import yaml
-from connectivity.channel import Channel
-from testsuites.envelope_models import (
-    ServerMessageEnvelope,
-    CertificationEnvelope,
-    CertificationMessageType,
-    KeyRegistrationRequestMessage,
-    ChallengeMessage,
-    ChallengeProofMessage,
-    CertificationMessage,
-    parse_certification_message,
-)
 
 import logging
 
@@ -31,6 +16,7 @@ logger = logging.getLogger(__name__)
 class CertificationEncoder:
     # Centralize encoding and decoding from bytes to allow for it to be changed later
     # Currently uses Base 64
+    # ALL ENCODING AND DECODING WITH BYTES SHOULD USE THIS - Facilitates easily swapping it out.
 
     @classmethod
     def encode(cls, data: bytes) -> str:
@@ -44,10 +30,21 @@ class CertificationEncoder:
 class SimpleCertifier:
     """This class is responsible for signing with a given PEM private key."""
 
+    PADDING = padding.PSS(
+        mgf=padding.MGF1(hashes.SHA256()),
+        salt_length=padding.PSS.MAX_LENGTH,
+    )
+    ALGORITHM = hashes.SHA256()
+
+    SERIALIZATION_ENCODING = serialization.Encoding.PEM
+    SERIALIZATION_FORMAT = serialization.PublicFormat.SubjectPublicKeyInfo
+
     def __init__(self, key_path: str, key_pass: Optional[bytes] = None) -> None:
         self.load_key(key_path, key_pass)
 
     def get_public_key(self):
+        """Gets the public key from the private key that was loaded."""
+
         if self.private_key is None:
             raise ValueError("Private Key must be provided.")
         return self.private_key.public_key()
@@ -55,8 +52,8 @@ class SimpleCertifier:
     def get_serialized_public_key(self) -> bytes:
         public_key = self.get_public_key()
         pem_bytes = public_key.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            encoding=self.SERIALIZATION_ENCODING,
+            format=self.SERIALIZATION_FORMAT,
         )
         return pem_bytes
 
@@ -70,12 +67,11 @@ class SimpleCertifier:
             )
 
     def sign_bytes(self, data: bytes) -> bytes:
+        """Performs the signing of some byte data using the loaded private key."""
         signature = self.private_key.sign(  # type: ignore
             data,
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH
-            ),  # type: ignore
-            hashes.SHA256(),  # type: ignore
+            self.PADDING,  # type: ignore
+            self.ALGORITHM,  # type: ignore
         )
         return signature
 
@@ -88,11 +84,8 @@ class SimpleCertifier:
             public_key.verify(  # type: ignore
                 signature,
                 data,
-                padding.PSS(
-                    mgf=padding.MGF1(hashes.SHA256()),
-                    salt_length=padding.PSS.MAX_LENGTH,
-                ),  # type: ignore
-                hashes.SHA256(),  # type: ignore
+                self.PADDING,  # type: ignore
+                self.ALGORITHM,  # type: ignore
             )
             return True
         except InvalidSignature:
@@ -144,9 +137,8 @@ class ReportSigner(SimpleCertifier):
         report_copy.signature.server_signature_timestamp = None
 
         result = self.verify(report_copy, client_signature, client_public_key)
-        logger.info("Signature Verify Result: %s;\n%s", result, report_copy)
         return result
-    
+
     def verify_double_signed(
         self, report: ComplianceReport, client_id: str, client_public_key=None
     ) -> bool:
@@ -177,7 +169,9 @@ class ReportSigner(SimpleCertifier):
             return False
         logger.warning("Server signature is valid. Verifying client signature...")
 
-        client_signature_valid = self.verify_client_signed(report_copy, client_id, client_public_key)
+        client_signature_valid = self.verify_client_signed(
+            report_copy, client_id, client_public_key
+        )
 
         if not client_signature_valid:
             logger.warning("Client signature is not valid.")
@@ -207,13 +201,6 @@ class ServerReportSigner(ReportSigner):
     def sign_report(self, report: ComplianceReport, client_id: str):
         """Double signs a report, provided that it's already been signed by the client."""
 
-        logger.info(
-            "%s; %s; %s; %s",
-            report.signature.client_signature,
-            report.signature.client_signature_timestamp,
-            report.signature.client_id,
-            report.signature.client_id != client_id,
-        )
         if (
             report.signature.client_signature is None
             or report.signature.client_signature_timestamp is None

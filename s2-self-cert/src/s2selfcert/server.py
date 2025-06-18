@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 class S2WebSocketBase:
+    """
+    The base class which is used in both server and client mode to take
+    the websocket connection and start the test executor.
+    """
+
     executor: AbstractCertificationExecutor
     mode: Literal["testing", "certification"]
 
@@ -61,6 +66,8 @@ class S2WebSocketBase:
                 logger.info(
                     "Starting in certification mode. All tests are run remotely."
                 )
+                # Base Channel just leaves them as JSON strings.
+                # The S2 Parsing is done on the server side.
                 s2_channel = BaseChannel(connection)
 
             await self.executor.run(s2_channel)

@@ -3,7 +3,7 @@
 services:
   s2-self-cert-server:
     build:
-      dockerfile: ./docker/Dockerfile.server
+      dockerfile: ./Dockerfile.server
     command: fastapi run /app/src/main.py --host 0.0.0.0 --port 8001
     ports:
       - ${PORT:-8001}:8001

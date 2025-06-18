@@ -46,6 +46,7 @@ class CertificationConfig(BaseModel):
 class ReportConfig(BaseModel):
     yaml: Optional[str] = None
     xml: Optional[str] = None
+    log_path: Optional[str] = None # The file that test logs are written to
     xml_soft_fail_is_fail: bool = True
     include_test_parameters: bool = True
 
@@ -82,9 +83,5 @@ class Config(BaseModel):
 
 def load_config(config_path) -> Config:
     with open(config_path) as stream:
-        try:
-            config = yaml.safe_load(stream)
-        except yaml.YAMLError as exc:
-            logger.error("Failed to load yaml config file.")
-            raise
+        config = yaml.safe_load(stream)
     return Config.model_validate(config)

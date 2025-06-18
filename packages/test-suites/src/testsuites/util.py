@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 import logging
 from typing import Dict, Optional
+from pydantic import ValidationError
 from s2python.common import EnergyManagementRole
 
 logger = logging.getLogger(__name__)
@@ -61,3 +62,12 @@ from zoneinfo import ZoneInfo
 TIMEZONE = ZoneInfo("Europe/Amsterdam")
 def current_timezone_time():
     return datetime.now(tz=TIMEZONE)
+
+def pretty_print_pydantic_validation_error(exc : ValidationError):
+    pretty = []
+    for err in exc.errors():
+        loc = ".".join(str(x) for x in err["loc"])
+        msg = err["msg"]
+        typ = err["type"]
+        pretty.append(f" • {loc} [{typ}]: {msg!r}")
+    return "\n".join(pretty)

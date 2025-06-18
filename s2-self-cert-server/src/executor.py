@@ -132,7 +132,6 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
         self._client_info_received_event.set()
 
     async def handle_control_message(self, message: ControlMessage):
-        logger.debug("Control Message: %s", message)
         await self.handle_message(message)
 
     async def handle_log_message(self, message: LogMessage):

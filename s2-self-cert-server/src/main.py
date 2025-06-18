@@ -1,25 +1,16 @@
 from contextlib import asynccontextmanager
-from importlib.metadata import version
 import os
-from typing import Optional
-from fastapi import FastAPI, HTTPException, Response
-import asyncio
-from enum import Enum
-import json
+from fastapi import FastAPI, HTTPException
 import logging
 import logging.config
-from connectivity.connection_adapter import ConnectionAdapter
 from fastapi import UploadFile, WebSocket
 from pydantic import BaseModel
 from testsuites.certificate.certificate import ComplianceReport
-from testsuites.certification_executor import AbstractCertificationExecutor
-from connectivity.config import Config
 from testsuites.server_websocket_envelope_channel import (
     ServerWebsocketConnectionChannel,
 )
 
 from testsuites.certificate.signature import (
-    SimpleCertifier,
     ServerReportSigner,
     CertificationEncoder,
 )
@@ -30,11 +21,8 @@ from .certifier import (
     TextFileKeyRepository,
 )
 from .executor import ServerSideCertificationExecutor
-
-
 from .log import LOGGING_CONFIG
 from .ws_adapter import FastAPIWebSocketAdapter
-
 
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
@@ -42,7 +30,6 @@ logger = logging.getLogger(__name__)
 SERVER_KEY_PATH = os.environ.get("SERVER_KEY_PATH", "./server_key.pem")
 KEYS_STORAGE_PATH = os.environ.get("KEYS_STORAGE_PATH", "./keys.json")
 
-app = FastAPI()
 
 signer: ServerReportSigner | None = None
 public_key_repository: KeyRepository | None = None
@@ -66,11 +53,16 @@ async def lifespan(app: FastAPI):
     yield
 
 
+app = FastAPI(lifespan=lifespan)
+
+
 # This is the certification websocket endpoint.
 # The client S2 Self Cert instances should connect to this to perform remote testing and certification.
 # Once done the client will have a double signed testing certificate.
 @app.websocket("/certification")
 async def connect_tester(websocket: WebSocket):
+    global signer
+    global public_key_repository
     if signer is None or public_key_repository is None:
         logger.error("Signer and Key Repository not loaded...")
         await websocket.close()
@@ -97,8 +89,6 @@ async def connect_tester(websocket: WebSocket):
 
     logger.info("Disconnected WebSocket.")
 
-    await websocket.close()
-
 
 class CertificateStatusResponse(BaseModel):
     valid: bool
@@ -120,6 +110,9 @@ async def verify_certificate(file: UploadFile) -> CertificateStatusResponse:
     Returns:
         Status Respon: _description_
     """
+
+    global signer
+    global public_key_repository
 
     if signer is None or public_key_repository is None:
         logger.error("Signer and Key Repository not loaded...")
@@ -163,6 +156,7 @@ async def verify_certificate(file: UploadFile) -> CertificateStatusResponse:
             status_code=400, detail="No organisation exists with that client_id."
         )
 
+    # Decode the public key from string to bytes
     public_key_pem_str = CertificationEncoder.decode(public_key_encoded_str)
 
     public_key = signer.load_public_key_from_pem(public_key_pem_str.decode("utf-8"))

@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 
 class CertificationTestExecutor(AbstractCertificationExecutor):
+    """This is the executor which forwards all received S2 Messages to the Certification server."""
+
     config: Config
 
     report: Optional[ComplianceReport] = None
@@ -143,31 +145,3 @@ class CertificationTestExecutor(AbstractCertificationExecutor):
             )
 
         return self.certification_handler.signed_certificate
-
-
-# class ServerSideCertificationOrchestrator(ServerOrchestrator):
-
-#     async def handle_control_message(message: ControlMessage):
-#         logger.info("Control Message: %s", message)
-
-#     async def main_loop(self):
-#         pass
-
-#     async def connect_to_server(self) -> ServerConnection:
-#         uri = f"{SERVER_PROTOCOL}://{SERVER_HOST}:{SERVER_PORT}{SERVER_PATH}"
-#         logger.info(f"Connecting to server ({uri})...")
-
-#         ws = await connect(uri)
-
-#         server_connection = ServerConnection(ws)
-
-#         logger.info("Connected to server.")
-
-#         return server_connection
-
-#     async def setup(self, connection: BaseConnection, *args, **kwargs):
-#         server_connection = await self.connect_to_server()
-
-#         await super().setup(connection, server_connection)
-
-#         logger.info("setup complete")

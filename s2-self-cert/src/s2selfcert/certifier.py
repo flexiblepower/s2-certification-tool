@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 class ClientSideCertifier(CertificationMessageHandler):
 
+    # Performs all the cryptographic signing processes
     signer: ClientReportSigner
 
     _challenge_request_sent_event: asyncio.Event
@@ -121,9 +122,15 @@ class ClientSideCertifier(CertificationMessageHandler):
         message: RawCertificateMessage,
         channel: Channel[ServerMessageEnvelope, str],
     ):
-        certificate = self.signer.sign_report(message.certificate)
+        # Receive the unsigned report, sign it with the private key, send back to be signed by server
+        # Server will check if signature valid for key provided during Challenge
 
-        logger.info(json.dumps(certificate.model_dump(), indent=2, default=str))
+        if not self._challenge_complete_event.is_set():
+            raise ValueError(
+                "Received raw certificate but challenge is not complete..."
+            )
+
+        certificate = self.signer.sign_report(message.certificate)
 
         message = ClientSignedCertificateMessage(certificate=certificate)
 
@@ -134,6 +141,9 @@ class ClientSideCertifier(CertificationMessageHandler):
         message: DoubleSignedCertificateMessage,
         channel: Channel[ServerMessageEnvelope, str],
     ):
+        # Receive the certificate which has been signed by both this client and the server. 
+        # This is just saved to a variable and can be read by an external class.
+
         self.signing_valid = True
         self.signed_certificate = message.certificate
         self._signing_complete_event.set()
@@ -143,6 +153,7 @@ class ClientSideCertifier(CertificationMessageHandler):
         message: SignatureStatusResponseCertificateMessage,
         channel: Channel[ServerMessageEnvelope, str],
     ):
+        # Status messages are sent at the end of the Challenge and during Certification if there is a problem
         if (
             self.previous_message.message_type
             == CertificationMessageType.CHALLENGE_PROOF

@@ -3,12 +3,14 @@
 **.log
 __pycache__
 config*.yaml
-!config.example.yaml
+!**config.example.yaml
 cert*.yaml
 **/*.egg-info
 report.*
 !report.example.*
 **.pem
+**.pytest_cache**
+**.tox**
 
-# The default location for the keys JSON file
+
 s2-self-cert-server/data
