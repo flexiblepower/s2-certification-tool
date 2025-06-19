@@ -1,0 +1,39 @@
+---
+
+services:
+  s2-self-cert:
+    image: busybox # TODO! Add the certifier image here!
+    networks:
+      - test_network
+    command: python3 /app/src/s2selfcert/main.py
+    environment:
+      - CONFIG_PATH=${CONFIG_PATH:-/app/ci-testing/config.yaml}
+    volumes:
+      - ./:/app/test/
+    healthcheck:
+      test: [ "CMD-SHELL", "true" ]
+      interval: 0s
+      timeout: 0s
+      retries: 1
+      start_period: 1s
+
+  # Add you application to be tested here! (This is an example)
+  # pv-installation:
+  #   image: pv-installation:latest # Image from https://github.com/flexiblepower/s2-example-implementations
+  #   build: ./pv-installations
+  #   environment:
+  #     # Provide the URL to your CEM here; this should be a WebSocket endpoint
+  #     - CEM_URL=ws://s2-self-cert:8000
+  #     # - CEM_URL=ws://host.docker.internal:8001/backend/rm/pv1/cem/cem1/ws
+  #     # Supported values:
+  #     # - PEBC: PV installation that can curtail
+  #     # - NOT_CONTROLABLE: PV installation without the option to curtail
+  #     - CONTROL_TYPE=PEBC
+  #   depends_on:
+  #     s2-self-cert:
+  #       condition: service_healthy
+  #   networks:
+  #     - test_network
+
+networks:
+  test_network:
