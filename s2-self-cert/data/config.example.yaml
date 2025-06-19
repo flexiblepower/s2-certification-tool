@@ -1,6 +1,8 @@
 device_details:
   name: Some Device
   manufacturer: ABCD
+  model: basic
+  firmware_version: "0"
 mode: certification # or testing
 certification:
   client_id: "example"
@@ -12,9 +14,10 @@ connection:
   port: 8000
   uri: wss://some-cem.com/connection-path
 report:
-  yaml: report.yaml
-  xml: report.xml # Default = null
-  log_path: tests.log
+  yaml: ./data/report.yaml
+  xml: ./data/report.xml
+  log_path: ./data/tests.log
+  message_log: ./data/messages.log
   xml_soft_fail_is_fail: true
   include_test_parameters: false
 
