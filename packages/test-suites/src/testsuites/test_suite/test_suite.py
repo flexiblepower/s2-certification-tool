@@ -3,6 +3,7 @@ import asyncio
 from enum import Enum
 import functools
 import inspect
+import json
 import logging
 import time
 from typing import (
@@ -191,9 +192,18 @@ class S2TestCase(unittest.TestCase):
                 # If there wasn't a handler there before then we remove the key
                 del self.controller.handlers[k]
 
-    def handle_validation_error(self, err: S2ValidationError):
+    async def handle_validation_error(
+        self, exception: S2ValidationError | json.JSONDecodeError
+    ):
+        self.test_logger.error(f"Failed to validate S2 Message: {exception}")
         # TODO: Use this...
-        self.test_logger.error(f"Received validation error: {err}")
+
+        result = TestResult(
+            name=f"S2 Message Validation - {exception}",
+            status=TestResultStatus.FAIL,
+            duration=0,
+            message="Failed to validate S2 Message.",
+        )
 
     @classmethod
     def test(cls, name=None):
@@ -415,7 +425,7 @@ class TestSuite:
             if config is None:
                 raise ValueError("No config passed.")
 
-            test_case = TestCase(
+            self.test_case = TestCase(
                 config,  # type: ignore
                 channel,
                 controller,
@@ -423,10 +433,29 @@ class TestSuite:
                 self.test_logger,
             )
 
-            result = await test_case.execute()
+            result = await self.test_case.execute()
 
             if result is not None:
                 self.report.add_test_suite_result(result)
+
+    async def handle_s2_validation_error(
+        self, exception: S2ValidationError | json.JSONDecodeError
+    ):
+        if self.test_case is not None:
+            await self.test_case.handle_validation_error(exception)
+        else:
+            result = TestResult(
+                name=f"S2 Message Validation - {exception}",
+                status=TestResultStatus.FAIL,
+                duration=0,
+                message="Failed to validate S2 Message.",
+            )
+            suite_results = TestSuiteResults(
+                name="S2 Validation", control_type=None, duration=0
+            )
+            suite_results.add_test_result(result)
+            self.report.add_test_suite_result(suite_results)
+            self.test_logger.error("S2 Validation Error")
 
 
 class TestSuiteBuilder:

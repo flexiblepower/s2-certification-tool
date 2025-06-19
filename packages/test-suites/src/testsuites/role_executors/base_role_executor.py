@@ -1,12 +1,14 @@
 import abc
 import asyncio
 import functools
+import json
 import logging
 import time
 import uuid
 from typing import Any, Callable, Coroutine, Dict, Optional, ParamSpec, TypeVar
 
 from s2python.version import S2_VERSION
+from s2python.s2_validation_error import S2ValidationError
 from s2python.common import (
     ControlType as ProtocolControlType,
     EnergyManagementRole,
@@ -240,6 +242,11 @@ class TestRoleExecutor(RoleExecutor):
         # Put the RM Details into the new controller.
         controller.resource_manager_details = self.controller.resource_manager_details
         self.controller = controller
+
+    async def handle_s2_validation_error(
+        self, exception: S2ValidationError | json.JSONDecodeError
+    ):
+        await self.test_suite.handle_s2_validation_error(exception)
 
     async def process_message(self, message: S2Message):
         # This ensures that the channel is set before any messages are processed

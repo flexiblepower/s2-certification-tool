@@ -198,4 +198,4 @@ def create_test_executor(
     }
 
     # The main integration test class. Everything to do with testing is encapsulated in it!
-    return IntegrationTestExecutor(role_executors=role_executors)
+    return IntegrationTestExecutor(role_executors=role_executors, test_logger=test_logger)

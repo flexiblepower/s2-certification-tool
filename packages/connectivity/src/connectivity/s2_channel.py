@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Literal, Optional, Type
+from typing import Awaitable, Callable, Literal, Optional, Type
 import uuid
 from s2python.common import ReceptionStatus, ReceptionStatusValues, EnergyManagementRole
 from s2python.message import S2Message
@@ -75,6 +75,10 @@ class S2Channel(Channel[S2Message, str]):
 
     role: Optional[EnergyManagementRole] = None
 
+    validation_error_handler: (
+        Callable[[json.JSONDecodeError | S2ValidationError], Awaitable[None]] | None
+    ) = None
+
     def __init__(self, connection: ConnectionAdapter) -> None:
         super().__init__(connection)
 
@@ -83,11 +87,18 @@ class S2Channel(Channel[S2Message, str]):
 
         self.message_queue = asyncio.Queue()
 
+    def set_validation_error_handler(
+        self,
+        handler: Callable[[json.JSONDecodeError | S2ValidationError], Awaitable[None]],
+    ):
+        self.validation_error_handler = handler
+
     def log_messages(
         self, message: S2Message, direction: Literal["INCOMING", "OUTGOING"]
     ):
         msg_dict = message.to_dict()
         sender = None
+        receiver = None
         if self.role is not None:
             sender = (
                 reverse_role(self.role) if direction == "INCOMING" else self.role
@@ -103,11 +114,7 @@ class S2Channel(Channel[S2Message, str]):
                 else logging.INFO
             ),
             msg=direction,
-            extra={
-                "s2_message": msg_dict,
-                "sender": sender,
-                "receiver": receiver,
-            },
+            extra={"s2_message": msg_dict, "sender": sender, "receiver": receiver},
         )
 
     async def send(self, message: S2Message):
@@ -181,7 +188,7 @@ class S2Channel(Channel[S2Message, str]):
                 )
 
             self.log_messages(s2_msg, "INCOMING")
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             await self.send(
                 ReceptionStatus(
                     subject_message_id=uuid.UUID(
@@ -191,7 +198,11 @@ class S2Channel(Channel[S2Message, str]):
                     diagnostic_label="Not valid json.",
                 )
             )
-            raise
+            if self.validation_error_handler is None:
+                raise
+            else:
+                await self.validation_error_handler(e)
+
         except S2ValidationError as e:
             json_msg = json.loads(message)
             message_id = json_msg.get("message_id")
@@ -215,7 +226,10 @@ class S2Channel(Channel[S2Message, str]):
                 )
 
             # Raise the error so that we can handle it in the orchestrator
-            raise e
+            if self.validation_error_handler is None:
+                raise
+            else:
+                await self.validation_error_handler(e)
         else:
             if isinstance(s2_msg, ReceptionStatus):
                 logger.debug(

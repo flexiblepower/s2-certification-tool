@@ -56,10 +56,10 @@ class NotControllableCEMTestCase(S2TestCase):
 
     async def generate_tests(self):
         await self.add_trigger_method(
-            self.send_valid_power_measurement_test, wait_time=2
+            self.send_valid_power_measurement_test, wait_time=0
         )
         # await self.add_trigger_method(self.send_power_forecast, wait_time=5)
-        await self.add_trigger_method(self.send_invalid_measurement, wait_time=2)
+        await self.add_trigger_method(self.send_invalid_measurement, wait_time=0)
         # await self.add_trigger_method(self.send_invalid_forecast, wait_time=5)
 
     def update_resource_manager_details_precondition(

@@ -1,5 +1,6 @@
 import abc
 import asyncio
+import json
 import logging
 from typing import Dict, Optional
 
@@ -9,6 +10,8 @@ from s2python.common import (
     Handshake,
 )
 from s2python.message import S2Message
+from s2python.s2_validation_error import S2ValidationError
+from testsuites.test_logger import AbstractTestLogger
 from testsuites.util import wait_for_event_or_stop
 from testsuites.certificate.certificate import ComplianceReport
 
@@ -53,6 +56,8 @@ class IntegrationTestExecutor(AbstractExecutor):
     executor: TestRoleExecutor | None = None
     role_executors: Dict[EnergyManagementRole, TestRoleExecutor]
 
+    test_logger: AbstractTestLogger
+
     _stop_event: asyncio.Event
 
     _select_role_executor = asyncio.Event()
@@ -60,9 +65,11 @@ class IntegrationTestExecutor(AbstractExecutor):
     def __init__(
         self,
         role_executors: Dict[EnergyManagementRole, TestRoleExecutor],
+        test_logger: AbstractTestLogger,
     ) -> None:
 
         self.role_executors = role_executors
+        self.test_logger = test_logger
 
         self._stop_event = asyncio.Event()
         self._select_role_executor = asyncio.Event()
@@ -78,6 +85,14 @@ class IntegrationTestExecutor(AbstractExecutor):
 
         # Setting this will allow the main_loop to proceed
         self._select_role_executor.set()
+
+    async def handle_s2_validation_error(
+        self, exception: S2ValidationError | json.JSONDecodeError
+    ):
+        if self.executor is None:
+            self.test_logger.error("Validation of S2 Message Failed...", ident=0)
+        else:
+            await self.executor.handle_s2_validation_error(exception)
 
     async def process_message(self, message: S2Message):
 
@@ -129,7 +144,7 @@ class IntegrationTestExecutor(AbstractExecutor):
 
     async def setup(self, channel: S2Channel, *args, **kwargs):
         self.channel = channel
-
+        self.channel.set_validation_error_handler(self.handle_s2_validation_error)
         self._stop_event.clear()
         self._select_role_executor.clear()
 
@@ -202,5 +217,3 @@ class IntegrationTestExecutor(AbstractExecutor):
         if self.executor is not None:
             return self.executor.report
         raise ValueError("No testing has been done.")
-
-
