@@ -34,6 +34,8 @@ This project is developed with modularity and extensibility in mind, making it e
 
 The certificate that is produced when running in Certification mode is signed by both the client side with the Organisation's key and as well as on the server side with the Certification server's key. This overlapping signature ensures that the certificate cannot be tampered with.
 
+The signed certificate can be validated by a 3rd party by sending an HTTP POST request to the certification server at the endpoint `/certification/verify/`. If the certificate is valid you will get a response `{"valid": true}`.
+
 > Disclaimer:
 > While the tool implements cryptographic signing to ensure the integrity of the certificates, I cannot guarantee the reliability or security of the signing process at this time. The implementation is provided as-is and should not be considered a reliable cryptographic solution until it has been verified by someone with more experience in cryptographic signing. Users are advised to review the signing process and adapt it to meet their specific security requirements. Use this tool at your own discretion and risk.
 
@@ -243,11 +245,29 @@ Inside of a validate method you can raise assertions. Once the validate method i
 
 The diagram below shows the asyncio tasks which are involved in the testing. Validation can only happen on the Test Case Thread.
 
-![Testing threads](./docs/testing_threads.png)
+```mermaid
+sequenceDiagram
+    participant Channel as Message Channel<br>Thread
+    participant Handlers as Message Handlers<br>Thread
+    participant Triggers as Triggers Thread<br>Managed by Test Case
+    participant Tests as Tests Case Thread
+    
+    Tests ->> Tests : Generate initial triggers
+    Channel ->> Handlers : Receives Message<br>(via queue)
+
+    Handlers ->> Tests : Pass message to be validated<br>(added to tests queue)
+    Handlers ->> Triggers : Generate new Triggers if needed<br>(added to triggers queue)
+
+    Triggers ->> Channel : Send messages
+```
 
 ---
 
 ### How the Certificate Signing Works
+
+#### Key Challenge
+
+This diagram shows the flow of how the certificate challenge on initial connection to the certification server works. If the challenge fails then the tool disconnects. If it passes the challenge then the testing is executed and the test report is double signed at the end.
 
 ```mermaid
 ---
@@ -284,6 +304,33 @@ sequenceDiagram
     end
 end
 ```
+
+#### Certificate Signing
+
+This diagram shows the flow of how the certificate is double signed after the testing is complete. The client signs the certificate first so that the server can validate that it was signed with the same key that was challenged at the start. Only if this is valid does the server sign the certificate and send it back.
+
+```mermaid
+sequenceDiagram
+    participant ClientOrg
+    participant Server
+
+%% rect rgb(83, 0, 83)
+    Note over Server, ClientOrg: Testing Complete
+    Server->>Server : Generate Unsigned Certificate
+    Server->> ClientOrg : Send Unsigned Certificate to Client
+    ClientOrg->>ClientOrg : Sign certificate using Org Private Key
+    ClientOrg ->>Server : Send single singed certificate back to server
+    Server->>Server : Verify that Certificate data matches and<br>verify signature with Org Public Key (From Challenge)
+
+    alt if certificate data and signature valid
+        Server->>Server : Sign Certificate with Private Key
+        Server->>ClientOrg : Send Double Signed Certificate
+    else
+        Server->>ClientOrg: Send Invalid Signature Response
+    end
+    Server-->>ClientOrg: Disconnect
+```
+
 
 ## Adding to the Tool
 
