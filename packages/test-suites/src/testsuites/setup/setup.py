@@ -1,3 +1,4 @@
+import logging
 import abc
 import asyncio
 from datetime import datetime
@@ -29,9 +30,11 @@ from testsuites.test_logger import (
 from testsuites.controllers import (
     Controller,
     BaseRMController,
+    # NotControllableRMController,
     PEBCRMController,
     FRBCRMController,
     BaseCEMController,
+    NotControllableCEMController,
     FRBCCEMController,
     PEBCCEMController,
 )
@@ -43,6 +46,9 @@ from testsuites.role_executors import (
 )
 from connectivity.config import Config, DeviceDetails
 
+logger = logging.getLogger(__name__)
+
+
 """
 This file contains the functions which assembles the IntegrationTestExecutor which is used 
 by both the client side tester and the server side certifier.
@@ -50,31 +56,29 @@ by both the client side tester and the server side certifier.
 The test case builder methods are located in this module as well.
 """
 
-# Add all controllers to this list! 
+# Add all controllers to this list!
 # As long as the role and control type value are set correctly they will be sorted
 # The controllers will be loaded based on the config enabled field
-controller_classes : list[type[Controller]] = [
+controller_classes: list[type[Controller]] = [
     # Controllers used when testing an RM
     BaseRMController,
     FRBCRMController,
     PEBCRMController,
-
     # Controllers used when testing a CEM
     BaseCEMController,
+    NotControllableCEMController,
     FRBCCEMController,
     PEBCCEMController,
 ]
 
 
+def get_controller_classes_dict(role: EnergyManagementRole):
+    classes = {}
+    for controller_class in controller_classes:
+        if controller_class.role == role:
+            classes[controller_class.control_type] = controller_class
+    return classes
 
-rm_controller_classes = {}
-cem_controller_classes = {}
-
-for controller_class in controller_classes:
-    if controller_class.role == EnergyManagementRole.CEM:
-        cem_controller_classes[controller_class.control_type] = controller_class
-    else:
-        rm_controller_classes[controller_class.control_type] = controller_class
 
 def create_rm_controllers_dict_with_config(
     config: Config,
@@ -85,7 +89,9 @@ def create_rm_controllers_dict_with_config(
     controllers[ProtocolControlType.NO_SELECTION] = BaseRMController()
 
     # Load all of the enabled controllers based on config
-    for control_type, controller_class in rm_controller_classes.items():
+    for control_type, controller_class in get_controller_classes_dict(
+        EnergyManagementRole.RM
+    ).items():
         try:
             control_type_config = config.roles.get_control_type_config(
                 EnergyManagementRole.CEM, control_type
@@ -142,7 +148,9 @@ def create_cem_controllers_dict_with_config(
     controllers[ProtocolControlType.NO_SELECTION] = BaseCEMController(rm_details)
 
     # Load all of the enabled controllers based on config
-    for control_type, controller_class in cem_controller_classes.items():
+    for control_type, controller_class in get_controller_classes_dict(
+        EnergyManagementRole.CEM
+    ).items():
         try:
             control_type_config = config.roles.get_control_type_config(
                 EnergyManagementRole.CEM, control_type
@@ -152,21 +160,7 @@ def create_cem_controllers_dict_with_config(
         except KeyError:
             pass
 
-    # if role_config.not_controllable and role_config.not_controllable.enabled:
-    #     controllers[ProtocolControlType.NOT_CONTROLABLE] = NotControllableCEMController(
-    #         rm_details
-    #     )
-
-    # if role_config.frbc and role_config.frbc.enabled:
-    #     controllers[ProtocolControlType.FILL_RATE_BASED_CONTROL] = FRBCCEMController(
-    #         rm_details
-    #     )
-
-    # if role_config.pebc and role_config.pebc.enabled:
-    #     controllers[ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL] = (
-    #         PEBCCEMController(rm_details)
-    #     )
-
+    # Set the Available Control Types based on the config and available controllers
     control_type_set = set(controllers.keys())
     control_type_set.discard(ProtocolControlType.NO_SELECTION)
     rm_details.available_control_types = list(control_type_set)

@@ -22,7 +22,7 @@ from s2python.common import (
 from s2python.message import S2Message
 
 
-from testsuites.certificate.certificate import ComplianceReport
+from testsuites.certificate.certificate import ComplianceReport, TestResultStatus
 from testsuites.controllers.cem.not_controllable_controller import (
     NotControllableCEMController,
 )
@@ -55,7 +55,12 @@ class NotControllableCEMTestCase(S2TestCase):
         super().__init__(config, channel, controller, report, logger)
 
     async def generate_tests(self):
-        await self.add_trigger_method(None, wait_time=5)
+        await self.add_trigger_method(
+            self.send_valid_power_measurement_test, wait_time=2
+        )
+        # await self.add_trigger_method(self.send_power_forecast, wait_time=5)
+        await self.add_trigger_method(self.send_invalid_measurement, wait_time=2)
+        # await self.add_trigger_method(self.send_invalid_forecast, wait_time=5)
 
     def update_resource_manager_details_precondition(
         self, precondition_id: str | None = None
@@ -112,26 +117,69 @@ class NotControllableCEMTestCase(S2TestCase):
             reception_status,
         )
 
+    async def send_test_power_measurement(
+        self,
+        name: str,
+        commodity_quantities: list[CommodityQuantity],
+        expected_reception_status: ReceptionStatusValues,
+    ):
+        values = []
+
+        for commodity_quantity in commodity_quantities:
+            values.append(
+                PowerValue(
+                    commodity_quantity=commodity_quantity,
+                    value=0,
+                )
+            )
+
+        power_measurement = PowerMeasurement(
+            measurement_timestamp=current_timezone_time(),
+            message_id=uuid.uuid4(),
+            values=values,
+        )
+
+        reception_status = await self.controller.send_power_measurement(
+            self.channel, power_measurement
+        )
+
+        await self.add_test_method(
+            name,
+            self.validate_reception_status,
+            reception_status,
+            expected_reception_status,
+            # Since I'm this isn't that important it's a soft fail
+            fail_result_status=TestResultStatus.SOFT_FAIL,
+        )
+
+    async def send_valid_power_measurement_test(self):
+        await self.send_test_power_measurement(
+            "9.2.4. Communicate Power Measurement",
+            self.controller.resource_manager_details.provides_power_measurement_types,
+            ReceptionStatusValues.OK,
+        )
+
+    async def send_invalid_measurement(self):
+        all_commodities = set(list(CommodityQuantity))
+        supported_commodities = set(
+            self.controller.resource_manager_details.provides_power_measurement_types
+        )
+
+        not_supported_commodities = list(all_commodities - supported_commodities)
+
+        await self.send_test_power_measurement(
+            "9.2.4. Communicate Power Measurement - Not supported Commodity Quantity",
+            not_supported_commodities,
+            ReceptionStatusValues.INVALID_CONTENT,
+        )
+
+    async def validate_reception_status(
+        self, reception_status: ReceptionStatus, expected_status: ReceptionStatusValues
+    ):
+        self.update_resource_manager_details_precondition("9.2.4.2.")
+        self.assertEqual(reception_status.status, expected_status)
+
     # TODO: Rethink
-    # @S2TestCase.test(name="9.2.4. Communicate Power Measurement")
-    # async def test_communicate_power_measurement(self):
-    #     self.update_resource_manager_details_precondition("9.2.4.2.")
-
-    #     commodity_quantities = self.get_system_description_commodity_quantities()
-
-    #     power_values = [
-    #         PowerValue(commodity_quantity=commodity_quantity, value=100)
-    #         for commodity_quantity in commodity_quantities
-    #     ]
-
-    #     power_measurement = PowerMeasurement(
-    #         measurement_timestamp=current_timezone_time(),
-    #         message_id=uuid.uuid4(),
-    #         values=power_values,
-    #     )
-
-    #     await self.send_power_measurement(power_measurement)
-
     # @S2TestCase.test(name="9.2.5. Update Power Forecast")
     # async def test_update_power_forecast(self):
     #     self.update_resource_manager_details_precondition("9.2.4.2.")

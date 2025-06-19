@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Optional, Literal
 
 import yaml
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_serializer, model_validator
 from s2python.common import ControlType as ProtocolControlType, EnergyManagementRole
 from .base import BaseTestConfig
 from .cem import ControlTypeCEMTestConfig
@@ -23,6 +23,11 @@ class DeviceDetails(BaseModel):
     firmware_version: str
     currency: Currency = Currency.EUR
     serial_number: str = "0000"
+
+
+    @field_serializer("currency")
+    def serializer_currency(self, currency: Currency):
+        return currency.name
 
 
 class ConnectionConfig(BaseModel):

@@ -3,7 +3,13 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Type
 from enum import Enum
 
-from pydantic import BaseModel, field_serializer, field_validator, model_validator, validator
+from pydantic import (
+    BaseModel,
+    field_serializer,
+    field_validator,
+    model_validator,
+    validator,
+)
 import yaml
 from connectivity.config import DeviceDetails
 
@@ -61,7 +67,8 @@ class TestSuiteResults(BaseModel):
             TestResultStatus.SOFT_FAIL,
             TestResultStatus.FAIL,
         ]:
-            self.status = TestResultStatus.SOFT_FAIL
+            # Soft fail doesn't cause whole failure
+            self.status = TestResultStatus.PASS
 
     @field_serializer("status")
     def serializer_status(self, status: TestResultStatus):
@@ -143,7 +150,7 @@ class TestSuiteResults(BaseModel):
 
     #     if "test" not in data:
     #         return data
-        
+
     #     if isinstance(data["tests"], dict):
     #         return data
 
@@ -154,7 +161,7 @@ class TestSuiteResults(BaseModel):
     #         data["tests"][test["name"]] = test
 
     #     return data
-    @model_validator(mode='before')
+    @model_validator(mode="before")
     @classmethod
     def _coerce_tests_list(cls, data: Any) -> Any:
         # only rewrite if the raw input has a list under "tests"
@@ -163,7 +170,7 @@ class TestSuiteResults(BaseModel):
 
         # build a dict[name -> test_payload]
         tests_list = data["tests"]
-        data["tests"] = { t["name"]: t for t in tests_list }
+        data["tests"] = {t["name"]: t for t in tests_list}
         return data
 
 
@@ -205,6 +212,7 @@ class ComplianceReport(BaseModel):
             self.export_to_junit_xml(config.xml, config.xml_soft_fail_is_fail)
 
     def export_to_yaml(self, filename, include_test_parameters):
+        logger.info(f"Writing YAML report to `{filename}`")
         with open(filename, "w") as output:
             cert_data = self.generate_certificate_dict(
                 include_test_parameters=include_test_parameters
@@ -224,6 +232,7 @@ class ComplianceReport(BaseModel):
         If filename is provided, writes to the file.
         Otherwise, returns the XML string.
         """
+
         overall_total_tests = 0
         overall_total_failures = 0
         overall_total_skipped = 0
@@ -314,7 +323,7 @@ class ComplianceReport(BaseModel):
 
         if filename:
             xml_tree.write(filename, encoding="utf-8", xml_declaration=True)
-            logger.info("Exporting JUnit XML report to `%s`.", filename)
+            logger.info(f"Writing JUnit XML report to `{filename}`")
             return None
         else:
             # To return as string

@@ -356,7 +356,7 @@ requires-dist = [
 provides-extras = ["ws", "testing", "development", "docs"]
 
 [[package]]
-name = "s2-self-cert"
+name = "s2selfcert"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

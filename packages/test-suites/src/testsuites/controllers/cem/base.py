@@ -25,6 +25,8 @@ class BaseCEMController(Controller):
     role = EnergyManagementRole.CEM
     control_type = ProtocolControlType.NO_SELECTION
 
+    resource_manager_details : ResourceManagerDetails
+
     def __init__(self, resource_manager_details: ResourceManagerDetails):
         super().__init__()
 
