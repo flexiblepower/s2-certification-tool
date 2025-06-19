@@ -30,6 +30,15 @@ This project is developed with modularity and extensibility in mind, making it e
 - **Certification**: Generate cryptographically signed certificates for compliant implementations.
 - **Extensibility**: Easily add new test cases, control types.
 
+### Certification
+
+The certificate that is produced when running in Certification mode is signed by both the client side with the Organisation's key and as well as on the server side with the Certification server's key. This overlapping signature ensures that the certificate cannot be tampered with.
+
+> Disclaimer:
+> While the tool implements cryptographic signing to ensure the integrity of the certificates, I cannot guarantee the reliability or security of the signing process at this time. The implementation is provided as-is and should not be considered a reliable cryptographic solution until it has been verified by someone with more experience in cryptographic signing. Users are advised to review the signing process and adapt it to meet their specific security requirements. Use this tool at your own discretion and risk.
+
+See below for more details about how the signing process works.
+
 ---
 
 ## Installation
@@ -238,6 +247,44 @@ The diagram below shows the asyncio tasks which are involved in the testing. Val
 
 ---
 
+### How the Certificate Signing Works
+
+```mermaid
+---
+config:
+  layout: dagre
+  look: neo
+  theme: neo
+---
+
+sequenceDiagram
+    participant ClientOrg
+    participant Server
+
+    Note over Server, ClientOrg: Certificate Challenge
+    ClientOrg->>Server: Submit public key and Client Org ID
+
+    alt If ClientID in storage and public key doesn't match
+        Server->>ClientOrg : Send Challenge Failed Response
+        Server-->>ClientOrg : Disconnect
+    else
+
+    Server->>Server: Generate random challenge string
+    Server->>ClientOrg: Send challenge
+    ClientOrg->>ClientOrg: Sign challenge with private key
+    ClientOrg->>Server: Send signature
+    Server->>Server: Verify signature with submitted public key
+
+    alt If signature valid
+        Server->>Server: Store public key if verification succeeds
+        Note over Server, ClientOrg: Start Testing
+    else
+        Server->>ClientOrg : Send Invalid Signature Response
+        Server-->>ClientOrg : Disconnect
+    end
+end
+```
+
 ## Adding to the Tool
 
 This section outlines how to add new test cases to this tool.
@@ -359,6 +406,12 @@ class FRBCTestCase(NotControllableRMTestCase):
             "Received unexpected leakage behaviour.",
         )
 ```
+
+## CI Testing
+
+In the `.ci-testing` folder are a few files that can allow you to run this integration testing suite in your CI. Currently only a GitLab CI pipeline has been created. The tool also produces a JUnit XML style report which GitLab CI can parse and include in the UI. 
+
+All that needs to happen to allow you to test your application in CI is add the docker compose config to the `./ci-testing/docker-compose.yaml` file. And include the GitLab CI file in the root of your repository.
 
 ---
 
