@@ -331,7 +331,6 @@ sequenceDiagram
     Server-->>ClientOrg: Disconnect
 ```
 
-
 ## Adding to the Tool
 
 This section outlines how to add new test cases to this tool.
@@ -456,7 +455,7 @@ class FRBCTestCase(NotControllableRMTestCase):
 
 ## CI Testing
 
-In the `.ci-testing` folder are a few files that can allow you to run this integration testing suite in your CI. Currently only a GitLab CI pipeline has been created. The tool also produces a JUnit XML style report which GitLab CI can parse and include in the UI. 
+In the `.ci-testing` folder are a few files that can allow you to run this integration testing suite in your CI. Currently only a GitLab CI pipeline has been created. The tool also produces a JUnit XML style report which GitLab CI can parse and include in the UI.
 
 All that needs to happen to allow you to test your application in CI is add the docker compose config to the `./ci-testing/docker-compose.yaml` file. And include the GitLab CI file in the root of your repository.
 
