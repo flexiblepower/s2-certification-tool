@@ -3,15 +3,15 @@ from testsuites.test_logger import AbstractTestLogger
 from testsuites.certificate.certificate import ComplianceReport
 from testsuites.test_suite.test_suite import TestSuiteBuilder
 
-from .frbc_test_cases import (
+from testsuites.test_suite.cem.frbc_test_cases import (
     FRBCElectricVehicleScenarioTestCase,
     FRBCBatteryScenarioTestCase,
 )
-from .pebc_test_cases import (
+from testsuites.test_suite.cem.pebc_test_cases import (
     PEBCPVPanelScenarioTestCase,
     PEBCElectricVehicleCurtailScenarioTestCase,
 )
-from .not_controllable import NotControllableCEMTestCase
+from testsuites.test_suite.cem.not_controllable import NotControllableCEMTestCase
 
 
 def build_cem_test_suite(
@@ -27,7 +27,5 @@ def build_cem_test_suite(
         .with_test_case(FRBCBatteryScenarioTestCase)
         # ! PEBC Test Case
         .with_test_case(PEBCPVPanelScenarioTestCase)
-        .with_test_case(
-            PEBCElectricVehicleCurtailScenarioTestCase
-        )
+        .with_test_case(PEBCElectricVehicleCurtailScenarioTestCase)
     )

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseCEMController(Controller):
-    role = EnergyManagementRole.RM
+    role = EnergyManagementRole.CEM
     control_type = ProtocolControlType.NO_SELECTION
 
     def __init__(self, resource_manager_details: ResourceManagerDetails):

@@ -1,56 +1,20 @@
 import abc
 import asyncio
-from datetime import datetime
 import logging
 from typing import Dict, Optional
-import uuid
 
 from s2python.common import (
     ControlType as ProtocolControlType,
     EnergyManagementRole,
     Handshake,
-    ResourceManagerDetails,
-    CommodityQuantity,
-    Currency,
-    Duration,
-    Role,
-    RoleType,
-    Commodity,
-    SelectControlType,
 )
 from s2python.message import S2Message
-
-
 from testsuites.util import wait_for_event_or_stop
 from testsuites.certificate.certificate import ComplianceReport
-from testsuites.test_suite import (
-    TestSuiteBuilder,
-    build_rm_test_suite,
-    build_cem_test_suite,
-)
-from testsuites.test_logger import (
-    AbstractTestLogger,
-)
-from testsuites.controllers import (
-    Controller,
-    BaseRMController,
-    PEBCRMController,
-    FRBCRMController,
-    BaseCEMController,
-    NotControllableCEMController,
-    FRBCCEMController,
-    PEBCCEMController,
-)
-
 
 from connectivity.s2_channel import S2Channel
-from connectivity.config import (
-    Config,
-    ControlTypeRMTestConfig,
-    ControlTypeCEMTestConfig,
-)
 from connectivity.connection_adapter import ConnectionClosed, ConnectionError
-from .role_executors import TestRoleExecutor, CEMTestRoleExecutor, RMTestExecutor
+from .role_executors import TestRoleExecutor
 
 
 logger = logging.getLogger(__name__)
@@ -240,105 +204,3 @@ class IntegrationTestExecutor(AbstractExecutor):
         raise ValueError("No testing has been done.")
 
 
-def create_rm_controllers_dict_with_config(
-    config: ControlTypeRMTestConfig,
-) -> Dict[ProtocolControlType, Controller]:
-    controllers: Dict[ProtocolControlType, Controller] = {}
-
-    controllers[ProtocolControlType.NO_SELECTION] = BaseRMController()
-
-    if config.frbc and config.frbc.enabled:
-        controllers[ProtocolControlType.FILL_RATE_BASED_CONTROL] = FRBCRMController()
-
-    if config.pebc and config.pebc.enabled:
-        controllers[ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL] = (
-            PEBCRMController()
-        )
-
-    return controllers
-
-
-def create_cem_controllers_dict_with_config(
-    config: ControlTypeCEMTestConfig,
-) -> Dict[ProtocolControlType, Controller]:
-    controllers: Dict[ProtocolControlType, Controller] = {}
-
-    # TODO: More details should come from config.
-    rm_details = ResourceManagerDetails(
-        available_control_types=[
-            ProtocolControlType.NOT_CONTROLABLE
-        ],  # I'll set this based on the controllers dict
-        roles=[
-            Role(
-                role=RoleType.ENERGY_PRODUCER,
-                commodity=Commodity.ELECTRICITY,
-            )
-        ],
-        name="TEST RM",
-        manufacturer="TEST",
-        model="TEST",
-        firmware_version="0",
-        currency=Currency.EUR,
-        message_id=uuid.uuid4(),
-        provides_forecast=True,
-        provides_power_measurement_types=[CommodityQuantity.ELECTRIC_POWER_L1],
-        resource_id=uuid.uuid4(),
-        serial_number="00000",
-        instruction_processing_delay=Duration(0),
-    )
-
-    controllers[ProtocolControlType.NO_SELECTION] = BaseCEMController(rm_details)
-
-    if config.not_controllable and config.not_controllable.enabled:
-        controllers[ProtocolControlType.NOT_CONTROLABLE] = NotControllableCEMController(
-            rm_details
-        )
-
-    if config.frbc and config.frbc.enabled:
-        controllers[ProtocolControlType.FILL_RATE_BASED_CONTROL] = FRBCCEMController(
-            rm_details
-        )
-
-    if config.pebc and config.pebc.enabled:
-        controllers[ProtocolControlType.POWER_ENVELOPE_BASED_CONTROL] = (
-            PEBCCEMController(rm_details)
-        )
-
-    control_type_set = set(controllers.keys())
-    control_type_set.discard(ProtocolControlType.NO_SELECTION)
-    rm_details.available_control_types = list(control_type_set)
-
-    return controllers
-
-
-def create_test_executor(
-    config: Config, test_logger: AbstractTestLogger
-) -> IntegrationTestExecutor:
-    report = ComplianceReport(timestamp=datetime.now(), device=config.device_details)
-
-    rm_controllers = create_rm_controllers_dict_with_config(config.roles.rm)
-    rm_test_suite_builder = build_rm_test_suite(config, report, test_logger)
-    rm_role_executor = RMTestExecutor(
-        available_control_types=rm_controllers,
-        test_suite=rm_test_suite_builder.build(),
-        report=report,
-        test_logger=test_logger,
-    )
-
-    cem_controllers = create_cem_controllers_dict_with_config(config.roles.cem)
-    cem_test_suite_builder = build_cem_test_suite(config, report, test_logger)
-    cem_role_executor = CEMTestRoleExecutor(
-        controllers=cem_controllers,
-        test_suite=cem_test_suite_builder.build(),
-        report=report,
-        test_logger=test_logger,
-    )
-
-    role_executors: Dict[EnergyManagementRole, TestRoleExecutor] = {
-        EnergyManagementRole.RM: rm_role_executor,
-        EnergyManagementRole.CEM: cem_role_executor,
-    }
-
-    executor = IntegrationTestExecutor(role_executors=role_executors)
-
-    return executor

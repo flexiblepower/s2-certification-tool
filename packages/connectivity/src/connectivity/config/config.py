@@ -7,6 +7,7 @@ from s2python.common import ControlType as ProtocolControlType, EnergyManagement
 from .base import BaseTestConfig
 from .cem import ControlTypeCEMTestConfig
 from .rm import ControlTypeRMTestConfig
+from s2python.generated.gen_s2 import Currency
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,10 @@ class ConfigError(Exception):
 class DeviceDetails(BaseModel):
     name: str
     manufacturer: str
+    model: str
+    firmware_version: str
+    currency: Currency = Currency.EUR
+    serial_number: str = "0000"
 
 
 class ConnectionConfig(BaseModel):
@@ -46,7 +51,7 @@ class CertificationConfig(BaseModel):
 class ReportConfig(BaseModel):
     yaml: Optional[str] = None
     xml: Optional[str] = None
-    log_path: Optional[str] = None # The file that test logs are written to
+    log_path: Optional[str] = None  # The file that test logs are written to
     xml_soft_fail_is_fail: bool = True
     include_test_parameters: bool = True
 
@@ -76,7 +81,7 @@ class Config(BaseModel):
     mode: Literal["testing", "certification"]
     connection: ConnectionConfig
     certification: Optional[CertificationConfig] = None
-    device_details: Optional[DeviceDetails] = None
+    device_details: DeviceDetails
     roles: RoleTestConfig
     report: Optional[ReportConfig] = ReportConfig()
 

@@ -83,7 +83,7 @@ This will create a key called `org_key.pem`. Put this into your configuration fi
 
 ### Configuration
 
-The tool uses a YAML configuration file to define the parameters for testing and certification. Below is an example configuration file and an explanation of its fields.
+The tool uses a YAML configuration file to define the parameters for testing and certification. The config is loaded on startup and used to configure the tool. The control type specific configurations are passed to the test cases for that control type. These configurations are used to configure the tests. Below is an example configuration file and an explanation of its fields.
 
 #### Example Configuration File
 
@@ -185,19 +185,180 @@ The tool is built using a modular, object-oriented design. Key components includ
 
 ---
 
-### Adding support for a new New Control Type
+## About the tool
+
+### How the testing works
+
+Since this tool is designed to be able to test any and all S2 devices, it creates the test cases at runtime based on the device details provided to it. For example, based on the Resource Manager Details that an RM provides, the test case will check that a device sends a forecast if the `provides_forecast` toggle is set.
+
+Furthermore, the tests in this tool are time and event bound. Essentially the test case will do some kind of task, such as send a message, and then wait to see how the device will response. For example, sending a PEBC Instruction and waiting for power readings to validate that the PEBC is following the instruction.
+
+In order to achieve these behaviours, the test cases are based around triggers. The test case has a queue of triggers which are executed one by one and after executing the trigger, it waits for either:
+
+- An asyncio.Event to be set
+- A wait time to be reached
+
+Once the event has been triggered or the wait time complete, the next trigger in the queue is executed. Once the triggers queue is empty and all validations are complete, the test case is complete.
+
+The triggers queue allows additional triggers to be added during test execution based on the messages sent by the device under test.
+
+#### Triggers Example
+
+We will use the RM PEBC Test Case as an example of how the triggers work. This test case can be found in `testsuites/rm/pebc_test_cases.py`.
+
+When the test cases is started the `generate_tests` method is run which adds the initial triggers to the queue. Before anything else can happen we need to receive the PEBC Power Constraints from the device. This is done by adding a trigger with only an event which will be waited for. The `_power_constraints_received_event` is set by the power PEBCPowerConstraints message handler once it's received.
+
+When the PEBCPowerConstraints, the main set of tests are created. Based on the power constraints we queue up a number of instruction triggers which will test all permutations of the curtailment limits. Each one of these triggers has a wait time to allow the S2 device to respond. This wait time is based on the config since different S2 devices might send power readings at different periods.
+
+Once the new triggers have been added, the `_power_constraints_received_event` is set, causing the next trigger to be executed.
+
+#### Making assertions
+
+The testing in this tool is centered around Python's `unittest` assertions. The S2 Test Case inherits from the `unittest.TestCase` so assertions in the test case can be called by `self.assertEqual(True, True)` for example.
+
+VERY IMPORTANT: Never run assertions inside of a message handler! Always create a validate method and pass the execution to the testing task (asyncio). Here's an example:
+
+```python
+await self.add_test_method(
+    "Validate Instruction Status Update", # Name used in test report.
+    self.validate_instruction_status_update,
+    message, # Pass any args or kwargs that the validate method needs here
+)
+```
+
+Inside of a validate method you can raise assertions. Once the validate method is complete it will add the test to the compliance report as:
+
+- PASS - if no assertions raised
+- FAIL - if an assertion is raised
+- SOFT_FAIL - if an assertion is raised and the `fail_result_status=TestResultStatus.FAIL` is set in the `add_test_method` call
+
+The diagram below shows the asyncio tasks which are involved in the testing. Validation can only happen on the Test Case Thread.
+
+![Testing threads](./docs/testing_threads.png)
 
 ---
+
+## Adding to the Tool
+
+This section outlines how to add new test cases to this tool.
+
+### Adding Additional Configurations
+
+All of the configuration data is loaded from the YAML file using Pydanic models to simplify data validation. All of the models can be found in the `connectivity` package under `config` (The location of the config is not ideal but was necessary to allow connectivity package to access the config.) The root model that all the configuration is loaded into is the `Config` class.
+
+### Adding New Controllers
+
+To add a new controller:
+
+1. Create a new class that extends from the `Controller` class in `testsuite.controllers`. Be sure to set the `role` and `control_type`.
+
+2. Add all the message handler methods to the class. All message handlers must have the following signature:
+
+```python
+async def handle_system_description_message(
+    self, message: FRBCSystemDescription, channel: "S2Channel", send_okay
+):
+  # Handle the message
+```
+
+3. Use the add handler method in the constructor to register the handler method for the message type it's supposed to handle:
+
+```python
+self.add_handler(FRBCSystemDescription, self.handle_system_description_message)
+```
+
+4. Register the new controller with the `IntegrationTestExecutor` setup methods in `testsuites.setup.setup`. Just add the class to the `controller_classes` list.
+
+5. Proceed to the next section to add a test case which uses this controller.
 
 ### Adding New Test Cases
 
 To add a new test case:
 
-1. Implement a new `TestCase` class in the `testsuites` package under "./src/testsuites/test_suite"
-    - Optionally, inherit from one of the existing base classes.
-2. Register the new `TestCase` with the builder in the CEM or RM `builder.py` file.
+1. If necessary, implement a new controller. See above... (Only necessary if implementing a totally new control type)
+2. Implement a new `TestCase` class in the `testsuites` package under "./src/testsuites/test_suite"
+    - Optionally, inherit from one of the existing base classes. It's a good idea to inherit from the NotControllable test case for the given role.
+3. Register the new `TestCase` using the builder in the `setup` folder of the `testsuites` module.
 
-This is a very simplified explanation. For more details see: **TODO**
+Here is an example from the FRBC Test Case:
+
+```python
+class FRBCTestCase(NotControllableRMTestCase):
+    name = "FRBC Test Case"
+    control_type = ProtocolControlType.FILL_RATE_BASED_CONTROL
+
+    controller: FRBCRMController
+    config: FRBCRMTestConfig
+
+    _system_description_received_event: asyncio.Event
+    _initial_storage_status: asyncio.Event
+
+    transitions_traversed: set
+
+    def __init__(
+        self,
+        config: FRBCRMTestConfig,     # The config class for this control type
+        channel: S2Channel,           # The S2 Channel used to send messages to and from the S2 Device.
+        controller: FRBCRMController, # The controller that stores the state and is used for device interaction. Use it's state to perform validations.
+        report: ComplianceReport,     # The test report where test results are written to.
+        logger: TestLogger,           # The logger where test logs are written to.
+    ):
+        super().__init__(config, channel, controller, report, logger)
+
+        # Initialise the events used for synchronisation.
+        self._system_description_received_event = asyncio.Event()
+        self._initial_storage_status = asyncio.Event()
+
+        # The S2TestCase is a message handler so that we can receive messages directly. 
+        # Add all the message handlers to the test case
+        # If a handler is defined here then it will be used instead of the controller's handler method. 
+        # You can run the controllers handler method (kindof like running super methods, ish...) with the 
+        self.message_handlers[FRBCSystemDescription] = (
+            self.handle_frbc_system_description
+        )
+        self.message_handlers[FRBCUsageForecast] = self.handle_usage_forecast
+        self.message_handlers[FRBCLeakageBehaviour] = self.handle_leakage_behaviour
+        self.message_handlers[FRBCActuatorStatus] = self.handle_actuator_status
+        self.message_handlers[FRBCStorageStatus] = self.handle_storage_status
+
+        self.transitions_traversed = set()
+
+    async def generate_tests(self):
+        """Add all initial triggers here"""
+        await super().generate_tests()
+
+        await self.add_trigger_method(
+            None, wait_time=5, event=self._system_description_received_event
+        )
+
+    async def handle_leakage_behaviour(
+        self, message: FRBCLeakageBehaviour, channel: "S2Channel", send_okay
+    ):
+        # Use the original handler from the controller
+        await self.handle_with_original_handler(message, channel, send_okay)
+        # Add a validation to be performed. NEVER PERFORM TEST VALIDATION INSIDE A HANDLER!
+        await self.add_test_method(
+            "9.6.3. Update Leakage Behaviour", self.validate_leakage_behaviour, message
+        )
+        # Wait for the reception status to finish being sent.
+        await send_okay
+
+    async def validate_leakage_behaviour(self, message: FRBCLeakageBehaviour):
+        # The validation method for the leakage behaviour message.
+        self.update_system_description_precondition("9.6.3.2")
+
+        # Sanity checks
+        self.assertIsNotNone(message)
+        self.assertEqual(type(message), FRBCLeakageBehaviour)
+
+        if self.controller.system_description is None:
+            raise AssertionError("System Description not set on controller.")
+
+        self.assertTrue(
+            self.controller.system_description.storage.provides_leakage_behaviour,
+            "Received unexpected leakage behaviour.",
+        )
+```
 
 ---
 

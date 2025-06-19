@@ -6,7 +6,8 @@ from connectivity.connection_adapter import ConnectionAdapter
 from testsuites.certification_executor import AbstractCertificationExecutor
 from connectivity.config import Config
 from connectivity.s2_channel import S2Channel
-from testsuites.test_executor import IntegrationTestExecutor, create_test_executor
+from testsuites.test_executor import IntegrationTestExecutor
+from testsuites.setup import create_test_executor
 from testsuites.certificate.certificate import ComplianceReport, Signature
 
 from testsuites.envelope_models import (
@@ -108,7 +109,7 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
         self._config_received_event.set()
 
     async def handle_client_info(self, message: ClientInfoControlMessage):
-        """This message contains information about the client software, such as package versions to be checked. 
+        """This message contains information about the client software, such as package versions to be checked.
         Can be expanded in future to include additional checks.
         """
 
@@ -140,7 +141,11 @@ class ServerSideCertificationExecutor(AbstractCertificationExecutor):
     async def main_loop(self):
 
         # Wait until the config is received before setting anything up.
-        await wait_for_event_or_stop(self._config_received_event, self._stop_event, description="Config Received event.")
+        await wait_for_event_or_stop(
+            self._config_received_event,
+            self._stop_event,
+            description="Config Received event.",
+        )
 
         self.report = ComplianceReport(device=self.config.device_details)
 

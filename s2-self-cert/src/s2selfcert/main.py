@@ -16,7 +16,7 @@ from s2selfcert.log import get_log_config
 from s2selfcert.server import S2WebSocketClient, S2WebSocketServer
 from s2selfcert.server_side_certification_orchestrator import CertificationTestExecutor
 from testsuites.certification_executor import AbstractCertificationExecutor
-from testsuites.test_executor import create_test_executor
+from testsuites.setup import create_test_executor
 from testsuites.test_suite import TestLogger
 from testsuites.certificate.signature import SimpleCertifier, ClientReportSigner
 from testsuites.util import pretty_print_pydantic_validation_error

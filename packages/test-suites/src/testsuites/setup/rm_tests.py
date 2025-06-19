@@ -1,13 +1,13 @@
+from connectivity.config import (
+    Config,
+)
+
+from testsuites.test_suite.rm.base_test_case import NotControllableRMTestCase
+from testsuites.test_suite.rm.frbc_test_cases import FRBCTestCase
+from testsuites.test_suite.rm.pebc_test_cases import PEBCTestCase
+from testsuites.test_suite.test_suite import TestSuite, TestSuiteBuilder
 from testsuites.test_logger import AbstractTestLogger, TestLogger
 from testsuites.certificate.certificate import ComplianceReport
-from testsuites.test_suite.test_suite import TestSuite, TestSuiteBuilder
-from connectivity.config import Config
-
-from .pebc_test_cases import (
-    PEBCTestCase,
-)
-from .base_test_case import NotControllableRMTestCase
-from .frbc_test_cases import FRBCTestCase
 
 
 def build_rm_test_suite(
