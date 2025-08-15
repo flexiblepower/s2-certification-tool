@@ -1,0 +1,41 @@
+device_details:
+  name: Some Device
+  manufacturer: ABCD
+  model: basic
+  firmware_version: "0"
+mode: or testing
+certification:
+  client_id: "example"
+  uri: ws://localhost:8001/certification
+  key_path: ./org_key.pem
+connection:
+  mode: server
+  host: 0.0.0.0
+  port: 8000
+  uri: wss://some-cem.com/connection-path
+report:
+  yaml: /app/tests/report.yaml
+  xml: /app/tests/report.xml
+  log_path: /app/tests/tests.log
+  message_log: /app/tests/messages.log
+  xml_soft_fail_is_fail: true
+  include_test_parameters: false
+
+roles:
+  rm:
+    enabled: false
+    not_controllable: null
+    pebc: 
+      enabled : true
+    frbc:
+      enabled: true
+  cem:
+    enabled: true 
+    not_controllable:
+      enabled: true
+    pebc:
+      enabled: false
+      instruction_wait_timeout: 0
+    frbc:
+      enabled: false
+      instruction_wait_timeout: 0 

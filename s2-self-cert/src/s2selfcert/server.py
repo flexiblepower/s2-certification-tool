@@ -1,0 +1,136 @@
+import asyncio
+import logging
+import signal
+from typing import Awaitable, Callable, Literal, Optional
+
+from testsuites.test_executor import IntegrationTestExecutor
+from websockets import connect
+from websockets.asyncio.connection import Connection as WSConnection
+from websockets.asyncio.server import serve as ws_serve
+from s2selfcert.ws_adapter import WebSocketConnectionAdapter
+from connectivity.channel import Channel, BaseChannel
+from connectivity.config import Config
+from connectivity.s2_channel import S2Channel
+from connectivity.config import ConnectionConfig, CertificationConfig
+
+from testsuites.certification_executor import AbstractCertificationExecutor
+
+logger = logging.getLogger(__name__)
+
+
+class S2WebSocketBase:
+    """
+    The base class which is used in both server and client mode to take
+    the websocket connection and start the test executor.
+    """
+
+    executor: AbstractCertificationExecutor
+    mode: Literal["testing", "certification"]
+
+    config: ConnectionConfig
+
+    _exit_event: asyncio.Event
+
+    def __init__(
+        self,
+        config: ConnectionConfig,
+        executor: AbstractCertificationExecutor,
+        on_complete_callback: Callable[
+            [AbstractCertificationExecutor], Awaitable[None]
+        ],
+        mode: Literal["testing", "certification"] = "testing",
+    ):
+        self._exit_event = asyncio.Event()
+
+        self.config = config
+        self.mode = mode
+
+        self.executor = executor
+
+        self.on_complete_callback = on_complete_callback
+
+    async def start_with_connection(self, websocket: WSConnection):
+        """
+        On WS connect it creates the connection instance and adds it to the Orchestrator.
+        If the orchestrator already has a connection then it discards the new connection.
+        This system is only meant to handle one connected device.
+        """
+        if not self.executor.is_running():
+            logger.info("Connection to RM opened.")
+            connection = WebSocketConnectionAdapter(websocket)
+
+            if self.mode == "testing":
+                logger.info("Starting in test mode. All tests are run locally.")
+                s2_channel = S2Channel(connection)
+            else:
+                logger.info(
+                    "Starting in certification mode. All tests are run remotely."
+                )
+                # Base Channel just leaves them as JSON strings.
+                # The S2 Parsing is done on the server side.
+                s2_channel = BaseChannel(connection)
+
+            await self.executor.run(s2_channel)
+
+            logger.info("Executor complete. Running callback.")
+            if self.on_complete_callback is not None:
+                await self.on_complete_callback(self.executor)
+
+            logger.info("Connection closed.")
+
+            await self.stop()
+        else:
+            logger.warning("This application only accepts one connection.")
+            await websocket.close()
+
+
+class S2WebSocketServer(S2WebSocketBase):
+    # Receives incoming S2 Resource Manager WebSocket Connections
+    executor: AbstractCertificationExecutor
+    mode: Literal["testing", "certification"]
+
+    _exit_event: asyncio.Event
+
+    async def stop(self):
+        logger.info("Stopping server...")
+        self._exit_event.set()
+
+    async def start(self):
+        loop = asyncio.get_event_loop()
+
+        # for sig in (signal.SIGINT, signal.SIGTERM):
+        #     loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
+
+        async with ws_serve(
+            self.start_with_connection, self.config.host, self.config.port
+        ) as ws_server:
+            logger.info(
+                f"Websocket server started at ws://{self.config.host}:{self.config.port}"
+            )
+            logger.info("Waiting for RM connection...")
+            await self._exit_event.wait()
+            logger.info(f"Server stopping.")
+
+        await self.executor.stop()
+        logger.info(f"Server stop.")
+
+
+class S2WebSocketClient(S2WebSocketBase):
+
+    async def start(self):
+        loop = asyncio.get_event_loop()
+
+        # for sig in (signal.SIGINT, signal.SIGTERM):
+        #     loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
+
+        logger.info(f"Connection to Websocket server at {self.config.uri}")
+        try:
+            async with connect(self.config.uri) as websocket:
+                await self.start_with_connection(websocket)
+        except OSError:
+            logger.error(f"Failed to connect to WebSocket. Exiting...")
+            return
+
+    async def stop(self):
+        logger.info("Stopping...")
+        await self.executor.stop()

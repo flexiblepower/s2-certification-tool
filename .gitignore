@@ -1,0 +1,16 @@
+.venv/
+.vscode
+**.log
+__pycache__
+config*.yaml
+!**config.example.yaml
+cert*.yaml
+**/*.egg-info
+report.*
+!report.example.*
+**.pem
+**.pytest_cache**
+**.tox**
+
+
+s2-self-cert-server/data

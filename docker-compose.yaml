@@ -1,0 +1,22 @@
+---
+
+services:
+  s2-self-cert:
+    image: ci.tno.nl:4567/s2/kiflin/s2-self-certification:latest
+    build:
+      dockerfile: ./Dockerfile.client
+    command: python3 /app/src/s2selfcert/main.py
+    ports:
+      - 8000:8000
+    volumes:
+      - ./s2-self-cert/src:/app/src
+      - ./s2-self-cert/data:/app/data
+      - ./packages:/packages
+    environment:
+      - CONFIG_PATH=${CONFIG_PATH:-/app/data/config-cem-certify.yaml}
+    healthcheck:
+      test: [ "CMD-SHELL", "true" ]
+      interval: 0s
+      timeout: 0s
+      retries: 1
+      start_period: 1s

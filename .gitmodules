@@ -1,0 +1,4 @@
+[submodule "packages/s2-python"]
+	path = packages/s2-python
+	url = git@github.com:AndrewRutherfoord/s2-python.git
+	branch = add_pebc_validation

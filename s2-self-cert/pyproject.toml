@@ -1,0 +1,19 @@
+[project]
+name = "s2selfcert"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "connectivity",
+ "cryptography>=45.0.4",
+ "test-suites",
+]
+
+[tool.uv.sources]
+test-suites = { path = "../packages/test-suites", editable = true }
+connectivity = { path = "../packages/connectivity", editable = true }
+
+[project.scripts]
+s2-self-cert = "s2selfcert.main:main"

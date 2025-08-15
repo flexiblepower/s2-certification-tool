@@ -1,0 +1,32 @@
+stages:
+  - integration_test
+
+variables:
+  APP_IMAGE_SUBPATH: "pv-installation"
+
+# Add a build job here...
+
+integration_test:
+  image: docker:24.0
+  stage: integration_test
+  services:
+    - name: docker:24.0-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_BUILDKIT: "1"
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - docker compose -f ./testing/compose.yaml up
+    - cat ./testing/test.log
+    - cat ./testing/report.yaml
+  artifacts:
+    # Write all of the test results to the GitLab Artifacts. 
+    paths:
+     - ./testing/test.log
+     - ./testing/messages.log
+     - ./testing/report.xml
+     - ./testing/report.yaml
+    reports:
+      junit: ./testing/report.xml

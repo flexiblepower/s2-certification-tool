@@ -1,0 +1,185 @@
+import logging
+import asyncio
+import time
+from typing import Dict
+
+from s2python.common import (
+    ControlType as ProtocolControlType,
+    EnergyManagementRole,
+    Handshake,
+    SelectControlType,
+    HandshakeResponse,
+)
+from s2python.message import S2Message
+
+
+from testsuites.util import wait_for_event_or_stop
+from testsuites.certificate.certificate import ComplianceReport
+from testsuites.test_suite.test_suite import TestSuite, TestSuiteBuilder
+from testsuites.test_logger import (
+    AbstractTestLogger,
+)
+from testsuites.controllers import (
+    Controller,
+    BaseCEMController,
+)
+from .base_role_executor import (
+    TestRoleExecutor,
+    ExitMainLoopException,
+    execute_as_test,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class CEMTestRoleExecutor(TestRoleExecutor):
+    """Tests a CEM. This assumed the role of Resource Manager and behaves like one for the duration of the tests.
+    For all activated control types this role executor will send an RM Details message with only one available control type which forces the CEM to choose it.
+    Then all of the tests for that control type are executed, after which a new RM details is sent with the next control type to be tested.
+    """
+
+    role = EnergyManagementRole.RM
+    controller: BaseCEMController
+
+    def __init__(
+        self,
+        controllers: Dict[ProtocolControlType, Controller],
+        test_suite: TestSuite,
+        report: ComplianceReport,
+        test_logger: AbstractTestLogger,
+    ) -> None:
+        super().__init__(controllers, test_suite, report, test_logger)
+
+        self._control_type_selected_event = asyncio.Event()
+        self._handshake_response_received_event = asyncio.Event()
+
+    async def handle_select_control_type(self, message: SelectControlType):
+        logger.info("Control Type Selected: %s", message.control_type)
+        self.set_control_type(message.control_type)
+        self._control_type_selected_event.set()
+
+    async def handle_handshake_response(self, message: HandshakeResponse):
+        self._handshake_response_received_event.set()
+        self.handshake_response_message = message
+
+    async def process_message(self, message: S2Message):
+        # Grab messages here so we can process them inside this class without complicated callbacks.
+        if type(message) == SelectControlType:
+            await self.handle_select_control_type(message)
+        elif type(message) == HandshakeResponse:
+            await self.handle_handshake_response(message)
+        return await super().process_message(message)
+
+    @execute_as_test(
+        test_name="9.2.1. Update Resource Manager Details",
+        error_message_prefix="Error whilst sending RM Details:",
+    )
+    async def send_resource_manager_details(self, control_type: ProtocolControlType):
+        try:
+            if self.channel is None:
+                raise ValueError("Channel not set.")
+
+            if self.controller.resource_manager_details is None:
+                raise ValueError("RM Details not set.")
+
+            # logger.info(self.controller.resource_manager_details.available_control_types)
+            self.controller.resource_manager_details.available_control_types = [
+                control_type
+            ]
+            await self.controller.send_resource_manager_details(self.channel)
+            self.test_logger.success("Resource Manager Details Sent.", ident=0)
+        except Exception as e:
+            self.test_logger.error(
+                f"Failed to send ResourceManagerDetails: {e}", ident=0
+            )
+            raise ExitMainLoopException()
+
+    @execute_as_test(
+        test_name="9.2.2. Activate Control Type",
+        error_message_prefix="Failed to activate control type",
+    )
+    async def wait_for_select_control_type(self):
+        try:
+            await wait_for_event_or_stop(
+                self._control_type_selected_event,
+                self._stop_event,
+                5,
+                description="Control Type Selected Event",
+            )
+            self.test_logger.success(
+                f"Control type set to {self.controller.control_type.name}", ident=0
+            )
+        except asyncio.CancelledError:
+            logger.warning("Main loop was cancelled.")
+            raise  # Propagate for TaskGroup
+        except Exception as e:
+            self.test_logger.error(
+                f"Failed to receive control type selection: {e}", ident=0
+            )
+            raise ExitMainLoopException()
+
+    @execute_as_test(
+        test_name="Handshake Response",
+        error_message_prefix="Error whilst processing handshake response from CEM.",
+    )
+    async def wait_for_handshake_response(self):
+        await wait_for_event_or_stop(
+            self._handshake_response_received_event,
+            self._stop_event,
+            description="No handshake response received.",
+        )
+
+        if self.incoming_handshake_message is None:
+            raise ValueError("Handshake message was not saved for validation.")
+
+        # Checking that the protocol version selected by the CEM is included in the list of supported versions send in the handshake.
+        if (
+            self.incoming_handshake_message.supported_protocol_versions is not None
+            and self.handshake_response_message.selected_protocol_version
+            not in self.incoming_handshake_message.supported_protocol_versions
+        ):
+            raise AssertionError(
+                "Invalid protocol version selected by CEM. Version selected not included in supported protocol versions."
+            )
+
+    async def main_loop(self):
+        # This sets the main loop started event so that the message processing can start.
+        await super().main_loop()
+        logger.info("Starting Main Loop for CEM Test Executor.")
+
+        if self.channel is None:
+            raise ValueError("Channel not set.")
+
+        self.test_logger.info("Test suite starting. ", ident=0)
+        try:
+            await self.send_handshake()
+            await self.wait_for_handshake()
+
+            await self.wait_for_handshake_response()
+
+            logger.info("Received Handshake from CEM. Sending RM Details.")
+            if self.controller.resource_manager_details is None:
+                raise ValueError("RM Details not set!")
+
+            control_types = (
+                self.controller.resource_manager_details.available_control_types
+            )
+            logger.info("Control Types: %s", control_types)
+            for control_type in control_types:
+
+                logger.info("Sending RM Details with %s control type.", control_type)
+                # Reset control type selected event so everything waits.
+                self._control_type_selected_event.clear()
+
+                await self.send_resource_manager_details(control_type)
+
+                await self.wait_for_select_control_type()
+
+                await self.controller.after_chosen(self.channel)
+
+                await self.execute_test_suite()
+
+                await asyncio.sleep(5)
+
+        except ExitMainLoopException:
+            return
